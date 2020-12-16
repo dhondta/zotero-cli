@@ -1,0 +1,595 @@
+#!/usr/bin/env python
+import json
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
+import operator
+import xlsxwriter
+from datetime import datetime
+from pyzotero import zotero
+from tinyscript import *
+
+
+__author__    = "Alexandre D'Hondt"
+__email__     = "alexandre.dhondt@gmail.com"
+__version__   = "1.0.1"
+__copyright__ = ("A. D'Hondt", 2020)
+__license__   = "gpl-3.0"
+__doc__       = """
+This tool aims to inspect, filter, sort and export Zotero references.
+
+It works by downloading the whole list of items to perform computations locally. It also uses a modified page rank to
+sort references to help selecting the most relevant ones.
+"""
+__examples__  = [
+    "count -f \"collections:biblio\" -f \"rank:>1.0\"",
+    "export year title itemType numAuthors numPages zscc references what results comments -f \"collections:biblio\" " \
+        "-s date -l \">rank:50\"",
+    "list attachments",
+    "list collections",
+    "list citations --desc -f \"citations:>10\"",
+    "show title DOI",
+    "show title date zscc -s date -l '>zscc:10'",
+]
+
+
+FILES = {
+    'creds': "zotero.creds",
+    # data
+    'attachments': ".attachments.json",
+    'collections': ".collections.json",
+    'items':       ".items.json",
+    'notes':       ".notes.json",
+}
+CREDS_FILE = "zotero.creds"
+
+CHARTS = ["software-in-time"]
+FILTERED_TYPES = ["computerProgram", "document", "webpage"]
+OPERATORS = {
+    '==': operator.eq,
+    '<':  operator.lt,
+    '<=': operator.le,
+    '>':  operator.gt,
+    '>=': operator.ge,
+}
+
+FIELD_ALIASES = {
+    'itemType': "Type",
+    'numAuthors': "#Authors",
+    'numPages': "#Pages",
+    'what': "What ?",
+    'zscc': "#Cited",
+}
+
+
+class ZoteroCLI(object):
+    def __init__(self, api_id=None, api_key=None):
+        self.id = api_id
+        self.key = api_key
+        self.__zot = None
+        for k in ["collections", "items", "attachments", "notes"]:
+            fn = FILES[k]
+            try:
+                if k == "creds":
+                    continue
+                with open(fn) as f:
+                    logger.debug("Getting %s from cache '%s'..." % (k, fn))
+                    setattr(self, k, json.load(f))
+            except OSError:
+                self._creds()
+                self.__zot = self.__zot or zotero.Zotero(self.id, "user", self.key)
+                logger.debug("Getting %s from zotero.org..." % k)
+                if k == "collections":
+                    self.collections = list(self.__zot.collections())
+                elif k == "items":
+                    self.items = list(self.__zot.everything(self.__zot.top()))
+                elif k in ["attachments", "notes"]:
+                    for attr in ["attachments", "notes"]:
+                        if not hasattr(self, attr):
+                            setattr(self, attr, [])
+                    for i in self.items[:]:
+                        if i['meta']['numChildren'] > 0:
+                            for c in self.__zot.children(i['key']):
+                                if c['data']['itemType'] == "attachment":
+                                    self.attachments.append(c)
+                                elif c['data']['itemType'] == "note":
+                                    self.notes.append(c)
+                                else:
+                                    raise ValueError("Unknown item type '%s'" % c['data']['itemType'])
+                with open(fn, 'w') as f:
+                    logger.debug("Saving %s to cache '%s'..." % (k, fn))
+                    json.dump(getattr(self, k), f)
+        self.__objects = {}
+        for a in ["attachments", "collections", "items", "notes"]:
+            for x in getattr(self, a):
+                self.__objects[x['key']] = x
+        self._valid_fields = []
+        self._valid_tags = []
+        # parse items, collecting valid fields and tags
+        for i in self.items:
+            tags = i['data'].get('tags')
+            if tags:
+                if ts.is_str(tags):
+                    tags = tags.split(";")
+                elif ts.is_list(tags):
+                    tags = [t['tag'] for t in tags]
+                for t in tags:
+                    if t not in self._valid_tags:
+                        self._valid_tags.append(t)
+            for f in i['data'].keys():
+                if f not in self._valid_fields:
+                    self._valid_fields.append(f)
+        # also append computed fields to the list of valid fields
+        for f in ["citations", "comments", "numAttachments", "numAuthors", "numNotes", "numPages", "rank", "references",
+                  "results", "what", "year", "zscc"]:
+            if f not in self._valid_fields:
+                self._valid_fields.append(f)
+    
+    def _creds(self):
+        """ Get API credentials from a local file or ask the user for it. """
+        if self.id is None and self.key is None:
+            try:
+                with open(CREDS_FILE) as f:
+                    self.id, self.key = f.read().split(":")
+            except:
+                pass
+        elif self.id is not None and self.key is not None:
+            return
+        self.id = self.id or ts.user_input("API ID:  ")
+        self.key = self.key or getpass.getpass("API key: ")
+        self.id, self.key = self.id.strip(), self.key.strip()
+    
+    def _filter(self, fields=None, filters=None):
+        """ Apply one or more filters to the items. """
+        # validate and make filters
+        _filters = {}
+        for f in filters or []:
+            try:
+                field, regex = list(map(lambda x: x.strip(), f.split(":", 1)))
+                not_ = field[0] == "~"
+                if not_:
+                    field = field[1:]
+                # filter format: (negate, comparison operator, first comparison value's lambda, second comparison value)
+                if field in ["citations", "references"] and re.match(r"^(<|>|<=|>=|==)\d+$", regex):
+                    m = re.match(r"^(<|>|<=|>=|==)(.*$)", regex)
+                    op, v = m.group(1), m.group(2).strip()
+                    filt = (not_, OPERATORS[op], lambda i, f: i['data'][f], int(v))
+                elif field.startswith("date"):
+                    m = re.match(r"^(<|>|<=|>=|==)(.*$)", regex)
+                    op, v = m.group(1), m.group(2).strip()
+                    filt = (not_, OPERATORS[op], lambda i, f: ZoteroCLI.date(i['data'][f]), ZoteroCLI.date(v))
+                # filter format: (negate, lambda, lambda's second arg)
+                elif field == "tags":
+                    if regex not in self._valid_tags and regex != "<empty>":
+                        logger.debug("Should be one of:\n- " + \
+                                     "\n- ".join(sorted(self._valid_tags, key=ZoteroCLI.sort)))
+                        logger.error("Tag '%s' does not exist" % regex)
+                        raise ValueError
+                    filt = (not_, lambda i, r: r == "<empty>" and i['data']['tags'] in ["", []] or \
+                                            r in (i['data']['tags'].split(";") if ts.is_str(i['data']['tags']) else \
+                                                  [x['tag'] for x in i['data']['tags']]), regex)
+                # filter format: (negate, lambda) ; lambda's second arg is the field name 
+                elif field == "attachement":
+                    filt = (not_, lambda i, f: i['links'].get('attachment') is not None)
+                elif regex == "<empty>":
+                    filt = (not_, lambda i, f: i['data'].get(f) == "")
+                elif field == "rank":
+                    m = re.match(r"^(<|>|<=|>=|==)(\d+|\d*\.\d+)$", regex)
+                    op, v = m.group(1), m.group(2).strip()
+                    filt = (not_, OPERATORS[op], lambda i, f: self.ranks.get(i['key'], 0), float(v))
+                else:
+                    filt = (not_, re.compile(regex, re.I), lambda i, f: i['data'].get(f) or "")
+                _filters.setdefault(field, [])
+                _filters[field].append(filt)
+            except:
+                logger.error("Bad filter '%s' ; format: [field]:[regex]" % f)
+                raise ValueError
+        # validate fields
+        afields = (fields or []) + list(_filters.keys())
+        for f in afields:
+            if f not in self._valid_fields:
+                logger.debug("Should be one of:\n- " + "\n- ".join(sorted(self._valid_fields, key=ZoteroCLI.sort)))
+                logger.error("Bad field name '%s'" % f)
+                raise ValueError
+        # now yield items, applying the filters and only selecting the given fields
+        for i in self.items:
+            # create a temporary item with computed fields (e.g. citations)
+            tmp_i = {k: v for k, v in i.items() if k != 'data'}
+            tmp_i['data'] = d = {k: self._format_value(v, k) for k, v in i['data'].items() if k in afields}
+            d['zscc'] = -1
+            # set custom fields defined in the special field named "Extra"
+            for l in i['data'].get('extra', "").splitlines():
+                try:
+                    field, value = list(map(lambda x: x.strip(), l.split(": ", 1)))
+                except:
+                    continue
+                field = field.lower()
+                if field not in i['data'].keys():
+                    if field == "zscc":
+                        try:
+                            d[field] = int(value)
+                        except:
+                            pass
+                    else:
+                        d[field] = self._format_value(value, field)
+            # compute non-existing fields if required
+            if "citations" in afields or "references" in afields:
+                c, r = 0, 0
+                try:
+                    links = i['data']['relations']['dc:relation']
+                    if not ts.is_list(links):
+                        links = [links]
+                    for link in links:
+                        k = link.split("/")[-1]
+                        if "collections" in _filters.keys():
+                            gb = True
+                            for n, regex, _ in _filters['collections']:
+                                b = regex.search(", ".join(self.__objects[x]['data']['name'] for x in \
+                                                           self.__objects[k]['data']['collections']))
+                                gb = gb and [b, not b][n]
+                            if not gb:
+                                continue
+                        if ZoteroCLI.date(self.__objects[k]['data']['date']) > ZoteroCLI.date(i['data']['date']):
+                            c += 1
+                        if ZoteroCLI.date(self.__objects[k]['data']['date']) <= ZoteroCLI.date(i['data']['date']):
+                            r += 1
+                except KeyError:
+                    pass
+                d['citations'] = c
+                d['references'] = r
+            if "collections" in afields:
+                d['collections'] = [self.__objects[k]['data']['name'] for k in i['data']['collections']]
+            if "numAttachments" in afields:
+                d['numAttachments'] = len([x for x in self.attachments if x['data']['parentItem'] == i['key']])
+            if "numAuthors" in afields:
+                d['numAuthors'] = len([x for x in i['data']['creators'] if x['creatorType'] == "author"])
+            if "numNotes" in afields:
+                d['numNotes'] = len([x for x in self.notes if x['data']['parentItem'] == i['key']])
+            if "numPages" in afields:
+                p = i['data'].get('numPages', i['data'].get('pages')) or "0"
+                m = re.match(r"(\d+)(?:\s*[\-–]+\s*(\d+))?$", p)
+                if m:
+                    s, e = m.groups()
+                    d['numPages'] = abs(int(s) - int(e or 0)) or -1
+                else:
+                    logger.warning("Bad pages value '%s'" % p)
+                    d['numPages'] = -1
+            if any(x in ["comments", "results", "what"] for x in afields):
+                for f in ["comments", "results", "what"]:
+                    d[f] = ""
+                for n in self.notes:
+                    if n['data']['parentItem'] == i['key']:
+                        t = bs4.BeautifulSoup(n['data']['note']).text
+                        try:
+                            f, c = t.split(":", 1)
+                        except:
+                            continue
+                        f = f.lower()
+                        if f in ["comments", "results", "what"]:
+                            d[f] = c.strip()
+            if "year" in afields:
+                d['year'] = ZoteroCLI.date(i['data']['date']).year
+            # now apply filters
+            pass_item = False
+            for field, tfilters in _filters.items():
+                for tfilter in tfilters:
+                    if isinstance(tfilter[1], re.Pattern):
+                        b = tfilter[1].search(self._format_value(tfilter[2](tmp_i, field), field))
+                    elif ts.is_lambda(tfilter[1]) and len(tfilter) == 2:
+                        b = tfilter[1](tmp_i, field)
+                    elif ts.is_lambda(tfilter[1]) and len(tfilter) == 3:
+                        b = tfilter[1](tmp_i, tfilter[2])
+                    elif len(tfilter) == 4:
+                        b = tfilter[1](tfilter[2](tmp_i, field), tfilter[3])
+                    else:
+                        raise ValueError("Unsupported filter")
+                    if [not b, b][tfilter[0]]:
+                        pass_item = True
+                        break
+                if pass_item:
+                    break
+            if not pass_item:
+                yield tmp_i
+    
+    def _format_value(self, value, field=""):
+        """ Ensure the given value is a string. """
+        if field == "tags":
+            return value if ts.is_str(value) else ";".join(x['tag'] for x in value)
+        elif field == "itemType":
+            return re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', re.sub(r'(.)([A-Z][a-z]+)', r'\1 \2', value)).lower()
+        elif field == "rank":
+            return "%.3f" % float(value or "0")
+        elif ts.is_int(value):
+            return [str(value), "-"][value < 0]
+        elif ts.is_list(value):
+            return ", ".join(self._format_value(x, field) for x in value)
+        elif ts.is_dict(value):
+            v = value.get('name') or "{} {}".format(value.get('firstName', ""), value.get('lastName', "")).strip()
+            return str(v or value)
+        return str(value)
+    
+    def _items(self, fields=None, filters=None, sort=None, desc=False, limit=None):
+        """ Get items, computing speciel fields and applying filters. """
+        filters = filters or []
+        sort = sort or fields[0]
+        data = []
+        # extract the limit field
+        lfield = None
+        if limit is not None:
+            try:
+                lfield, limit = limit.split(":")
+                lfield = lfield.strip()
+                lfdesc = False
+                if lfield[0] in "<>":
+                    lfdesc = lfield[0] == ">"
+                    lfield = lfield[1:]
+            except ValueError:
+                pass
+            limit = int(limit)
+            if limit <= 0:
+                raise ValueError("Bad limit number ; sould be a positive integer")
+        # select relevant items, including all the fields required for further computations
+        ffields = fields[:]
+        if sort not in ffields:
+            ffields.append(sort)
+        if "rank" in fields or lfield == "rank" or sort == "rank" or \
+           "rank" in [f.split(":")[0].lstrip("~") for f in filters or []]:
+            for f in ["rank", "citations", "references", "year", "zscc"]:
+                if f not in ffields:
+                    ffields.append(f)
+        if limit is not None:
+            ffields.append(lfield)
+        items = {i['key']: i for i in self._filter(ffields, [f for f in filters if not re.match(r"\~?rank\:", f)])}
+        if len(items) == 0:
+            logger.info("No data")
+            return
+        # compute ranks similarly to the Page Rank algorithm, if relevant
+        if "rank" in ffields:
+            logger.debug("Computing ranks...")
+            # principle: items with a valid date get a weight, others (with year==1900) do not
+            self.ranks = {k: 1.0/len(items) if i['data']['year'] > 1900 else 0 for k, i in items.items()}
+            y = set(i['data']['year'] for i in items.values()) - {1900}
+            # min/max years are computed to take item's age into account
+            y_min, y_max = min(y), max(y)
+            dy = float(y_max - y_min)
+            # in order not to get a null damping factor for items with minimum year, we shift y_min
+            y_min -= max(1, dy // 10)
+            dy = float(y_max - y_min)
+            # now we can iterate
+            prev = tuple(self.ranks.values())
+            for i in range(len(self.ranks)):
+                for k1 in self.ranks.keys():
+                    k1_d = self.__objects[k1]['data']
+                    links = k1_d['relations'].get('dc:relation', [])
+                    if not ts.is_list(links):
+                        links = [links]
+                    if items[k1]['data']['year'] == 1900:
+                        continue
+                    # compute the damping factor
+                    d1 = float(items[k1]['data']['year'] - y_min) / dy
+                    # now compute the iterated rank
+                    self.ranks[k1] = d1
+                    for link in links:
+                        k2 = link.split("/")[-1]
+                        if k2 not in items.keys():
+                            continue
+                        if ZoteroCLI.date(k1_d['date']) <= ZoteroCLI.date(self.__objects[k2]['data']['date']):
+                            k2_d = items.get(k2, {}).get('data')
+                            if k2_d:
+                                r = k2_d['references']
+                                if r > 0:
+                                    # consider a damping factor on a per-item basis, taking age into account
+                                    d2 = float(items[k2]['data']['year'] - y_min) / dy
+                                    self.ranks[k1] += d2 * self.ranks.get(k2, 0) / r
+                # check for convergence
+                if tuple(self.ranks.values()) == prev:
+                    break
+                prev = tuple(self.ranks.values())
+            items = {i['key']: i for i in self._filter(ffields, filters)}
+            for k, i in items.items():
+                i['data']['rank'] = self.ranks.get(k)
+            if len(items) == 0:
+                logger.info("No data")
+                return
+        # apply the limit on the selected items
+        if limit is not None:
+            if lfield is not None:
+                select_items = sorted(items.values(), key=lambda i: ZoteroCLI.sort(i['data'][lfield], lfield))
+            else:
+                select_items = list(items.values())
+            if lfdesc:
+                select_items = select_items[::-1]
+            logger.debug("Limiting to %d items (sorted based on %s in %s order)..." % \
+                         (limit, lfield, ["ascending", "descending"][lfdesc]))
+            items = {i['key']: i for i in select_items[:limit]}
+        # ensure that the rank field is set for every item
+        if "rank" in ffields:
+            for i in items.values():
+                i['data']['rank'] = self.ranks.get(i['key'], .0)
+        # format the selected items as table data
+        logger.debug("Sorting items based on %s..." % sort)
+        for i in sorted(items.values(), key=lambda i: ZoteroCLI.sort(i['data'].get(sort, "-"), sort)):
+            data.append([self._format_value(i['data'].get(f), f) if i['data'].get(f) else "-" for f in fields])
+        if desc:
+            data = data[::-1]
+        return [ZoteroCLI.header(f) for f in fields], data
+    
+    def count(self, filters=None):
+        """ Count items while applying filters. """
+        _, data = self._items(["title"], filters)
+        print(len(data))
+    
+    def export(self, fields=None, filters=None, sort=None, desc=False, limit=None):
+        """ Export the selected fields of items while applying filters to an Excel file. """
+        headers, data = self._items(fields, filters, sort, desc, limit)
+        c, r = string.ascii_uppercase[len(headers)-1], len(data) + 1
+        logger.debug("Creating Excel file...")
+        wb = xlsxwriter.Workbook("export.xlsx")
+        ws = wb.add_worksheet()
+        ws.add_table("A1:%s%d" % (c, r), {
+            'autofilter': 1,
+            'columns': [{'header': h} for h in headers],
+            'data': data,
+        })
+        # center header cells
+        cc = wb.add_format()
+        cc.set_align("center")
+        for i, h in enumerate(headers):
+            ws.write("%s1" % string.ascii_uppercase[i], h, cc)
+        # fix widths
+        max_w = []
+        wtxt = [False] * len(headers)
+        for i in range(len(headers)):
+            m = max(len(str(row[i])) for row in [headers] + data)
+            w = min(m, 80)
+            wtxt[i] = wtxt[i] or m > 80
+            max_w.append(w)
+            ws.set_column("{0}:{0}".format(string.ascii_uppercase[i]), w)
+        # wrap text where needed and fix heights
+        tw = wb.add_format()
+        tw.set_text_wrap()
+        for j, row in enumerate(data):
+            for i, v in enumerate(row):
+                if wtxt[i]:
+                    ws.write(string.ascii_uppercase[i] + str(j+2), v, tw)
+        wb.close()
+    
+    def list(self, field, filters=None, desc=False, limit=None):
+        """ List field's values while applying filters. """
+        if field == "collections":
+            l = [c['data']['name'] for c in self.collections]
+        elif field == "attachments":
+            l = [a['data']['title'] for a in self.attachments]
+        else:
+            l = [row[0] for row in self._items([field], filters)[1]]
+        if len(l) == 0:
+            logger.info("No data")
+            return
+        data = [[x] for x in sorted(set(l), key=lambda x: ZoteroCLI.sort(x, field))]
+        if desc:
+            data = data[::-1]
+        if limit is not None:
+            data = data[:limit]
+        print(ts.BorderlessTable([[ZoteroCLI.header(field)]] + data))
+    
+    def plot(self, name, filters=None):
+        """ Plot a chart given its slug. """
+        if name == "software-in-time":
+            data = {}
+            for i in self._filter(["title", "date"], ["itemType:computerProgram"] + filters):
+                y = ZoteroCLI.date(i['data']['date']).year
+                data.setdefault(y, [])
+                data[y].append(i['data']['title'])
+            for y, t in sorted(data.items(), key=lambda x: x[0]):
+                print(["%d:" % y, "####:"][y == 1900], ", ".join(t))
+        else:
+            logger.debug("Should be one of:\n- " + "\n- ".join(sorted(CHARTS)))
+            logger.error("Bad chart")
+            raise ValueError
+    
+    def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
+        """ Show the selected fields of items while applying filters. """
+        headers, data = self._items(fields, filters, sort, desc, limit)
+        print(ts.BorderlessTable([headers] + data))
+    
+    @staticmethod
+    def date(date_str):
+        for f in ["", "%Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]:
+            try:
+                return datetime.strptime(date_str, f)
+            except:
+                pass
+        raise ValueError("Bad datetime format: %s" % date_str)
+    
+    @staticmethod
+    def header(field):
+        h = FIELD_ALIASES.get(field, field)
+        return h[0].upper() + h[1:]
+    
+    @staticmethod
+    def sort(value, field=None):
+        field = field or ""
+        if field.startswith("date") or field.endswith("Date"):
+            return ZoteroCLI.date(value.lstrip("-")).timestamp()
+        elif re.match(r"-?\d+(\.\d+)?$", str(value)) and field not in ["issue", "volume"] or \
+             field in ["callNumber", "citations", "numPages", "rank", "references", "zscc"]:
+            try:
+                return float(-1 if value in ["", "-", None] else value)
+            except:
+                logger.warning("Bad value '%s' for field %s" % (value, field))
+                return -1
+        else:
+            return str(value).lower()
+
+
+if __name__ == '__main__':
+    parser.add_argument("-i", "--id", help="API identifier",
+                        note="if 'id' and 'key' not specified, credentials are obtained from file '%s'" % CREDS_FILE)
+    parser.add_argument("-k", "--key", help="API key",
+                        note="if not specified while 'id' is, 'key' is asked as a password")
+    parser.add_argument("-r", "--reset", action="store_true", help="remove cached collections and items")
+    sparsers = parser.add_subparsers(dest="command", help="command to be executed")
+    ccount = sparsers.add_parser("count", help="count items")
+    ccount.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied while counting",
+                        note="format: [field]:[regex]")
+    cexpt = sparsers.add_parser("export", help="export items to an Excel file")
+    cexpt.add_argument("field", nargs="+", help="field to be shown")
+    cexpt.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
+                       note="format: [field]:[regex]")
+    cexpt.add_argument("-l", "--limit", help="limit the number of displayed records",
+                       note="format: either a number or [field]:[number]\n"
+                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
+    cexpt.add_argument("-s", "--sort", help="field to be sorted on",
+                       note="if not defined, the first input field is selected\n"
+                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
+    clist = sparsers.add_parser("list", help="list distinct values for the given field")
+    clist.add_argument("field", help="field whose distinct values are to be listed")
+    clist.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
+                       note="format: [field]:[regex]")
+    clist.add_argument("-l", "--limit", type=ts.pos_int, help="limit the number of displayed records")
+    clist.add_argument("--desc", action="store_true", help="sort results in descending order")
+    cplot = sparsers.add_parser("plot", help="plot various information using Matplotlib")
+    cplot.add_argument("chart", choices=CHARTS, help="chart to be plotted")
+    cplot.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
+                       note="format: [field]:[regex]")
+    creset = sparsers.add_parser("reset", help="reset cached collections and items")
+    creset.add_argument("-r", "--reset-items", action="store_true", help="reset items only")
+    cshow = sparsers.add_parser("show", help="show items")
+    cshow.add_argument("field", nargs="+", help="field to be shown")
+    cshow.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
+                       note="format: [field]:[regex]")
+    cshow.add_argument("-l", "--limit", help="limit the number of displayed records",
+                       note="format: either a number or [field]:[number]\n"
+                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
+    cshow.add_argument("-s", "--sort", help="field to be sorted on",
+                       note="if not defined, the first input field is selected\n"
+                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
+    initialize()
+    if hasattr(args, "sort"):
+        args.desc = False
+        if args.sort is not None:
+            args.desc = args.sort[0] == ">"
+            if args.sort[0] in "<>":
+                args.sort = args.sort[1:]
+    if args.command == "reset":
+        args.reset = True
+    if args.reset:
+        for k, fn in FILES.items():
+            if k == "creds" or k != "items" and args.reset_items:
+                continue
+            try:
+                os.remove(fn)
+            except OSError:
+                pass
+    z = ZoteroCLI(args.id, args.key)
+    if args.command == "count":
+        z.count(args.filter or [])
+    elif args.command == "export":
+        z.export(args.field, args.filter, args.sort, args.desc, args.limit)
+    elif args.command == "list":
+        z.list(args.field, args.filter, args.desc, args.limit)
+    elif args.command == "plot":
+        z.plot(args.chart)
+    elif args.command == "show":
+        z.show(args.field, args.filter, args.sort, args.desc, args.limit)
+

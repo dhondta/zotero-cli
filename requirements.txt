@@ -1,0 +1,5 @@
+matplotlib
+numpy
+pyzotero
+tinyscript>=1.23.12
+xlsxwriter
