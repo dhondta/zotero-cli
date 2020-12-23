@@ -31,15 +31,15 @@ $ pip install zotero-cli-tool
 
 ## Quick Start
 
-- Fix your credentials
-
-Edit `zotero.creds` and write your API identifier and key in the format `<ID>:<key>`.
+The first time you start it, the tool will ask for your API identifier and key. It will cache it to `~/.zotero/creds.txt` this persmissions set to `rw` for your user only. Data is cached to `~/.zotero/cache/`.
 
 - Manually update cached data
 
 ```sh
 $ zotero-cli reset
 ```
+
+Note that it could take a while. That's why caching is interesting for further use.
 
 - Count items in a collection
 

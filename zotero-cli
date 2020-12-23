@@ -2,7 +2,6 @@
 import json
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
-import numpy as np
 import operator
 import xlsxwriter
 from datetime import datetime
@@ -12,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.0.1"
+__version__   = "1.0.2"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -32,16 +31,14 @@ __examples__  = [
     "show title date zscc -s date -l '>zscc:10'",
 ]
 
-
-FILES = {
-    'creds': "zotero.creds",
-    # data
-    'attachments': ".attachments.json",
-    'collections': ".collections.json",
-    'items':       ".items.json",
-    'notes':       ".notes.json",
+CACHE_FILES = {
+    'attachments': "attachments.json",
+    'collections': "collections.json",
+    'items':       "items.json",
+    'notes':       "notes.json",
 }
-CREDS_FILE = "zotero.creds"
+CACHE_PATH = ts.Path("~/.zotero/cache", create=True, expand=True)
+CREDS_FILE = ts.CredentialsPath("~/.zotero")
 
 CHARTS = ["software-in-time"]
 FILTERED_TYPES = ["computerProgram", "document", "webpage"]
@@ -64,20 +61,22 @@ FIELD_ALIASES = {
 
 class ZoteroCLI(object):
     def __init__(self, api_id=None, api_key=None):
-        self.id = api_id
-        self.key = api_key
+        if api_id is not None and api_key is not None:
+            CREDS_FILE.id = api_id
+            CREDS_FILE.secret = api_key
+            CREDS_FILE.save()
         self.__zot = None
-        for k in ["collections", "items", "attachments", "notes"]:
-            fn = FILES[k]
+        for k in ["collections", "items", "attachments", "notes"]:  # not CACHE_FILES.keys() ; order matters here
+            cached_file = CACHE_PATH.joinpath(CACHE_FILES[k])
             try:
                 if k == "creds":
                     continue
-                with open(fn) as f:
-                    logger.debug("Getting %s from cache '%s'..." % (k, fn))
+                with cached_file.open() as f:
+                    logger.debug("Getting %s from cache '%s'..." % (k, cached_file))
                     setattr(self, k, json.load(f))
             except OSError:
                 self._creds()
-                self.__zot = self.__zot or zotero.Zotero(self.id, "user", self.key)
+                self.__zot = self.__zot or zotero.Zotero(CREDS_FILE.id, "user", CREDS_FILE.secret)
                 logger.debug("Getting %s from zotero.org..." % k)
                 if k == "collections":
                     self.collections = list(self.__zot.collections())
@@ -96,11 +95,11 @@ class ZoteroCLI(object):
                                     self.notes.append(c)
                                 else:
                                     raise ValueError("Unknown item type '%s'" % c['data']['itemType'])
-                with open(fn, 'w') as f:
-                    logger.debug("Saving %s to cache '%s'..." % (k, fn))
+                with cached_file.open('w') as f:
+                    logger.debug("Saving %s to cache '%s'..." % (k, cached_file))
                     json.dump(getattr(self, k), f)
         self.__objects = {}
-        for a in ["attachments", "collections", "items", "notes"]:
+        for a in CACHE_FILES.keys():
             for x in getattr(self, a):
                 self.__objects[x['key']] = x
         self._valid_fields = []
@@ -127,17 +126,11 @@ class ZoteroCLI(object):
     
     def _creds(self):
         """ Get API credentials from a local file or ask the user for it. """
-        if self.id is None and self.key is None:
-            try:
-                with open(CREDS_FILE) as f:
-                    self.id, self.key = f.read().split(":")
-            except:
-                pass
-        elif self.id is not None and self.key is not None:
-            return
-        self.id = self.id or ts.user_input("API ID:  ")
-        self.key = self.key or getpass.getpass("API key: ")
-        self.id, self.key = self.id.strip(), self.key.strip()
+        if CREDS_FILE.id == "" and CREDS_FILE.secret == "":
+            CREDS_FILE.load()
+        if CREDS_FILE.id == "" and CREDS_FILE.secret == "":
+            CREDS_FILE.ask("API ID: ", "API key: ")
+            CREDS_FILE.save()
     
     def _filter(self, fields=None, filters=None):
         """ Apply one or more filters to the items. """
@@ -571,14 +564,12 @@ if __name__ == '__main__':
             args.desc = args.sort[0] == ">"
             if args.sort[0] in "<>":
                 args.sort = args.sort[1:]
-    if args.command == "reset":
-        args.reset = True
-    if args.reset:
-        for k, fn in FILES.items():
-            if k == "creds" or k != "items" and args.reset_items:
+    if args.command == "reset" or args.reset:
+        for k, fn in CACHE_FILES.items():
+            if getattr(args, "reset_items", False) and k != "items":
                 continue
             try:
-                os.remove(fn)
+                os.remove(str(CACHE_PATH.joinpath(fn)))
             except OSError:
                 pass
     z = ZoteroCLI(args.id, args.key)
