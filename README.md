@@ -101,9 +101,13 @@ Some additional fields can be used for listing/filtering/showing/exporting data.
 
 - Computed fields
 
+  - `authors`: the list of `creators` with `creatorType` equal to `author`
   - `citations`: the number of relations the item has to other items with a later date
+  - `editors`: the list of `creators` with `creatorType` equal to `editor`
   - `numAttachments`: the number of child items with `itemType` equal to `attachment`
   - `numAuthors`: the number of `creators` with `creatorType` equal to `author`
+  - `numCreators`: the number of `creators`
+  - `numEditors`: the number of `creators` with `creatorType` equal to `editor`
   - `numNotes`: the number of child items with `itemType` equal to `note`
   - `numPages`: the (corrected) number of pages, either got from the original or `pages` field
   - `references`: the number of relations the item has to other items with an earlier date

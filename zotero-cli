@@ -11,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.0.2"
+__version__   = "1.0.3"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -52,11 +52,13 @@ OPERATORS = {
 
 FIELD_ALIASES = {
     'itemType': "Type",
-    'numAuthors': "#Authors",
-    'numPages': "#Pages",
     'what': "What ?",
     'zscc': "#Cited",
 }
+INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "numCreators", "numEditors", "numNotes",
+                  "numPages", "rank", "references", "year", "zscc"]
+
+get_name = lambda x: x.get('name') or "{} {}".format(x.get('firstName', ""), x.get('lastName', "")).strip()
 
 
 class ZoteroCLI(object):
@@ -119,8 +121,7 @@ class ZoteroCLI(object):
                 if f not in self._valid_fields:
                     self._valid_fields.append(f)
         # also append computed fields to the list of valid fields
-        for f in ["citations", "comments", "numAttachments", "numAuthors", "numNotes", "numPages", "rank", "references",
-                  "results", "what", "year", "zscc"]:
+        for f in INTEGER_FIELDS + ["comments", "results", "what"]:
             if f not in self._valid_fields:
                 self._valid_fields.append(f)
     
@@ -143,28 +144,26 @@ class ZoteroCLI(object):
                 if not_:
                     field = field[1:]
                 # filter format: (negate, comparison operator, first comparison value's lambda, second comparison value)
-                if field in ["citations", "references"] and re.match(r"^(<|>|<=|>=|==)\d+$", regex):
-                    m = re.match(r"^(<|>|<=|>=|==)(.*$)", regex)
+                if field in set(INTEGER_FIELDS) - set(["rank"]) and re.match(r"^(<|>|<=|>=|==)\d+$", regex):
+                    m = re.match(r"^(<|>|<=|>=|==)(\d+)$", regex)
                     op, v = m.group(1), m.group(2).strip()
                     filt = (not_, OPERATORS[op], lambda i, f: i['data'][f], int(v))
                 elif field.startswith("date"):
-                    m = re.match(r"^(<|>|<=|>=|==)(.*$)", regex)
+                    m = re.match(r"^(<|>|<=|>=|==)([^=]*)$", regex)
                     op, v = m.group(1), m.group(2).strip()
                     filt = (not_, OPERATORS[op], lambda i, f: ZoteroCLI.date(i['data'][f]), ZoteroCLI.date(v))
                 # filter format: (negate, lambda, lambda's second arg)
                 elif field == "tags":
-                    if regex not in self._valid_tags and regex != "<empty>":
+                    if regex not in self._valid_tags and regex not in ["-", "<empty>"]:
                         logger.debug("Should be one of:\n- " + \
                                      "\n- ".join(sorted(self._valid_tags, key=ZoteroCLI.sort)))
                         logger.error("Tag '%s' does not exist" % regex)
                         raise ValueError
-                    filt = (not_, lambda i, r: r == "<empty>" and i['data']['tags'] in ["", []] or \
+                    filt = (not_, lambda i, r: r in ["-", "<empty>"] and i['data']['tags'] in ["", []] or \
                                             r in (i['data']['tags'].split(";") if ts.is_str(i['data']['tags']) else \
                                                   [x['tag'] for x in i['data']['tags']]), regex)
                 # filter format: (negate, lambda) ; lambda's second arg is the field name 
-                elif field == "attachement":
-                    filt = (not_, lambda i, f: i['links'].get('attachment') is not None)
-                elif regex == "<empty>":
+                elif regex in ["-", "<empty>"]:
                     filt = (not_, lambda i, f: i['data'].get(f) == "")
                 elif field == "rank":
                     m = re.match(r"^(<|>|<=|>=|==)(\d+|\d*\.\d+)$", regex)
@@ -206,6 +205,10 @@ class ZoteroCLI(object):
                     else:
                         d[field] = self._format_value(value, field)
             # compute non-existing fields if required
+            if "authors" in afields:
+                d['authors'] = [c for c in i['data']['creators'] if c['creatorType'] == "author"]
+            if "editors" in afields:
+                d['editors'] = [c for c in i['data']['creators'] if c['creatorType'] == "editor"]
             if "citations" in afields or "references" in afields:
                 c, r = 0, 0
                 try:
@@ -236,6 +239,10 @@ class ZoteroCLI(object):
                 d['numAttachments'] = len([x for x in self.attachments if x['data']['parentItem'] == i['key']])
             if "numAuthors" in afields:
                 d['numAuthors'] = len([x for x in i['data']['creators'] if x['creatorType'] == "author"])
+            if "numCreators" in afields:
+                d['numCreators'] = len([x for x in i['data']['creators']])
+            if "numEditors" in afields:
+                d['numEditors'] = len([x for x in i['data']['creators'] if x['creatorType'] == "editor"])
             if "numNotes" in afields:
                 d['numNotes'] = len([x for x in self.notes if x['data']['parentItem'] == i['key']])
             if "numPages" in afields:
@@ -297,8 +304,7 @@ class ZoteroCLI(object):
         elif ts.is_list(value):
             return ", ".join(self._format_value(x, field) for x in value)
         elif ts.is_dict(value):
-            v = value.get('name') or "{} {}".format(value.get('firstName', ""), value.get('lastName', "")).strip()
-            return str(v or value)
+            return str(get_name(value) or value)
         return str(value)
     
     def _items(self, fields=None, filters=None, sort=None, desc=False, limit=None):
@@ -318,9 +324,10 @@ class ZoteroCLI(object):
                     lfield = lfield[1:]
             except ValueError:
                 pass
+            if not str(limit).isdigit() or int(limit) <= 0:
+                logger.error("Bad limit number ; sould be a positive integer")
+                raise ValueError
             limit = int(limit)
-            if limit <= 0:
-                raise ValueError("Bad limit number ; sould be a positive integer")
         # select relevant items, including all the fields required for further computations
         ffields = fields[:]
         if sort not in ffields:
@@ -407,11 +414,13 @@ class ZoteroCLI(object):
             data = data[::-1]
         return [ZoteroCLI.header(f) for f in fields], data
     
+    @ts.failsafe
     def count(self, filters=None):
         """ Count items while applying filters. """
         _, data = self._items(["title"], filters)
         print(len(data))
     
+    @ts.failsafe
     def export(self, fields=None, filters=None, sort=None, desc=False, limit=None):
         """ Export the selected fields of items while applying filters to an Excel file. """
         headers, data = self._items(fields, filters, sort, desc, limit)
@@ -447,12 +456,22 @@ class ZoteroCLI(object):
                     ws.write(string.ascii_uppercase[i] + str(j+2), v, tw)
         wb.close()
     
+    @ts.failsafe
     def list(self, field, filters=None, desc=False, limit=None):
         """ List field's values while applying filters. """
         if field == "collections":
             l = [c['data']['name'] for c in self.collections]
+        elif field == "fields":
+            l = self._valid_fields
+        elif field == "tags":
+            l = self._valid_tags
         elif field == "attachments":
             l = [a['data']['title'] for a in self.attachments]
+        elif field in ["authors", "creators", "editors"]:
+            if field == "creators":
+                l = [get_name(c) for i in self.items for c in i['data']['creators']]
+            else:
+                l = [get_name(c) for i in self.items for c in i['data']['creators'] if c['creatorType'] == field[:-1]]
         else:
             l = [row[0] for row in self._items([field], filters)[1]]
         if len(l) == 0:
@@ -465,6 +484,7 @@ class ZoteroCLI(object):
             data = data[:limit]
         print(ts.BorderlessTable([[ZoteroCLI.header(field)]] + data))
     
+    @ts.failsafe
     def plot(self, name, filters=None):
         """ Plot a chart given its slug. """
         if name == "software-in-time":
@@ -480,6 +500,7 @@ class ZoteroCLI(object):
             logger.error("Bad chart")
             raise ValueError
     
+    #@ts.failsafe
     def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
         """ Show the selected fields of items while applying filters. """
         headers, data = self._items(fields, filters, sort, desc, limit)
@@ -487,16 +508,17 @@ class ZoteroCLI(object):
     
     @staticmethod
     def date(date_str):
-        for f in ["", "%Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]:
+        for f in ["", "%Y", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]:
             try:
                 return datetime.strptime(date_str, f)
             except:
                 pass
-        raise ValueError("Bad datetime format: %s" % date_str)
+        logger.error("Bad datetime format: %s" % date_str)
+        raise ValueError
     
     @staticmethod
     def header(field):
-        h = FIELD_ALIASES.get(field, field)
+        h = FIELD_ALIASES.get(field, re.sub(r"^num([A-Z].*)$", r"#\1", field))
         return h[0].upper() + h[1:]
     
     @staticmethod
@@ -504,8 +526,7 @@ class ZoteroCLI(object):
         field = field or ""
         if field.startswith("date") or field.endswith("Date"):
             return ZoteroCLI.date(value.lstrip("-")).timestamp()
-        elif re.match(r"-?\d+(\.\d+)?$", str(value)) and field not in ["issue", "volume"] or \
-             field in ["callNumber", "citations", "numPages", "rank", "references", "zscc"]:
+        elif re.match(r"-?\d+(\.\d+)?$", str(value)) and field not in ["issue", "volume"] or field in INTEGER_FIELDS:
             try:
                 return float(-1 if value in ["", "-", None] else value)
             except:
@@ -566,7 +587,7 @@ if __name__ == '__main__':
                 args.sort = args.sort[1:]
     if args.command == "reset" or args.reset:
         for k, fn in CACHE_FILES.items():
-            if getattr(args, "reset_items", False) and k != "items":
+            if getattr(args, "reset_items", False) and k not in ["items", "attachments", "notes"]:
                 continue
             try:
                 os.remove(str(CACHE_PATH.joinpath(fn)))
