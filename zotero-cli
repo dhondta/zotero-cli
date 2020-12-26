@@ -11,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.0.4"
+__version__   = "1.0.5"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -57,6 +57,7 @@ FIELD_ALIASES = {
 }
 INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "numCreators", "numEditors", "numNotes",
                   "numPages", "rank", "references", "year", "zscc"]
+NOTE_FIELDS = ["comments", "results", "what"]
 
 get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.get('firstName', "")).strip()
 
@@ -121,7 +122,7 @@ class ZoteroCLI(object):
                 if f not in self._valid_fields:
                     self._valid_fields.append(f)
         # also append computed fields to the list of valid fields
-        for f in INTEGER_FIELDS + ["authors", "comments", "editors", "results", "what"]:
+        for f in ["authors", "editors", "selected"] + INTEGER_FIELDS + NOTE_FIELDS:
             if f not in self._valid_fields:
                 self._valid_fields.append(f)
     
@@ -260,8 +261,8 @@ class ZoteroCLI(object):
                 else:
                     logger.warning("Bad pages value '%s'" % p)
                     d['numPages'] = -1
-            if any(x in ["comments", "results", "what"] for x in afields):
-                for f in ["comments", "results", "what"]:
+            if any(x in NOTE_FIELDS for x in afields):
+                for f in NOTE_FIELDS:
                     d[f] = ""
                 for n in self.notes:
                     if n['data']['parentItem'] == i['key']:
@@ -271,7 +272,7 @@ class ZoteroCLI(object):
                         except:
                             continue
                         f = f.lower()
-                        if f in ["comments", "results", "what"]:
+                        if f in NOTE_FIELDS:
                             d[f] = c.strip()
             if "year" in afields:
                 d['year'] = ZoteroCLI.date(i['data']['date']).year
