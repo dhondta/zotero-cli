@@ -11,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.0.3"
+__version__   = "1.0.4"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -58,7 +58,7 @@ FIELD_ALIASES = {
 INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "numCreators", "numEditors", "numNotes",
                   "numPages", "rank", "references", "year", "zscc"]
 
-get_name = lambda x: x.get('name') or "{} {}".format(x.get('firstName', ""), x.get('lastName', "")).strip()
+get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.get('firstName', "")).strip()
 
 
 class ZoteroCLI(object):
@@ -121,7 +121,7 @@ class ZoteroCLI(object):
                 if f not in self._valid_fields:
                     self._valid_fields.append(f)
         # also append computed fields to the list of valid fields
-        for f in INTEGER_FIELDS + ["comments", "results", "what"]:
+        for f in INTEGER_FIELDS + ["authors", "comments", "editors", "results", "what"]:
             if f not in self._valid_fields:
                 self._valid_fields.append(f)
     
@@ -140,6 +140,9 @@ class ZoteroCLI(object):
         for f in filters or []:
             try:
                 field, regex = list(map(lambda x: x.strip(), f.split(":", 1)))
+                if regex == "":
+                    logger.error("Regex for filter on field '%s' is empty" % field)
+                    raise ValueError
                 not_ = field[0] == "~"
                 if not_:
                     field = field[1:]
@@ -149,8 +152,11 @@ class ZoteroCLI(object):
                     op, v = m.group(1), m.group(2).strip()
                     filt = (not_, OPERATORS[op], lambda i, f: i['data'][f], int(v))
                 elif field.startswith("date"):
-                    m = re.match(r"^(<|>|<=|>=|==)([^=]*)$", regex)
-                    op, v = m.group(1), m.group(2).strip()
+                    if regex in ["-", "<empty>"]:
+                        op, v = "==", ""
+                    else:
+                        m = re.match(r"^(<|>|<=|>=|==)([^=]*)$", regex)
+                        op, v = m.group(1), m.group(2).strip()
                     filt = (not_, OPERATORS[op], lambda i, f: ZoteroCLI.date(i['data'][f]), ZoteroCLI.date(v))
                 # filter format: (negate, lambda, lambda's second arg)
                 elif field == "tags":
@@ -207,8 +213,6 @@ class ZoteroCLI(object):
             # compute non-existing fields if required
             if "authors" in afields:
                 d['authors'] = [c for c in i['data']['creators'] if c['creatorType'] == "author"]
-            if "editors" in afields:
-                d['editors'] = [c for c in i['data']['creators'] if c['creatorType'] == "editor"]
             if "citations" in afields or "references" in afields:
                 c, r = 0, 0
                 try:
@@ -235,6 +239,8 @@ class ZoteroCLI(object):
                 d['references'] = r
             if "collections" in afields:
                 d['collections'] = [self.__objects[k]['data']['name'] for k in i['data']['collections']]
+            if "editors" in afields:
+                d['editors'] = [c for c in i['data']['creators'] if c['creatorType'] == "editor"]
             if "numAttachments" in afields:
                 d['numAttachments'] = len([x for x in self.attachments if x['data']['parentItem'] == i['key']])
             if "numAuthors" in afields:
@@ -299,6 +305,8 @@ class ZoteroCLI(object):
             return re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', re.sub(r'(.)([A-Z][a-z]+)', r'\1 \2', value)).lower()
         elif field == "rank":
             return "%.3f" % float(value or "0")
+        elif field == "year":
+            return [str(value), "-"][value == 1900]
         elif ts.is_int(value):
             return [str(value), "-"][value < 0]
         elif ts.is_list(value):
@@ -342,7 +350,7 @@ class ZoteroCLI(object):
         items = {i['key']: i for i in self._filter(ffields, [f for f in filters if not re.match(r"\~?rank\:", f)])}
         if len(items) == 0:
             logger.info("No data")
-            return
+            return [], []
         # compute ranks similarly to the Page Rank algorithm, if relevant
         if "rank" in ffields:
             logger.debug("Computing ranks...")
@@ -500,11 +508,12 @@ class ZoteroCLI(object):
             logger.error("Bad chart")
             raise ValueError
     
-    #@ts.failsafe
+    @ts.failsafe
     def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
         """ Show the selected fields of items while applying filters. """
         headers, data = self._items(fields, filters, sort, desc, limit)
-        print(ts.BorderlessTable([headers] + data))
+        if len(headers) > 0:
+            print(ts.BorderlessTable([headers] + data))
     
     @staticmethod
     def date(date_str):
