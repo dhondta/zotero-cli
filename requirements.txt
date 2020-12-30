@@ -1,4 +1,4 @@
 matplotlib
 pyzotero
-tinyscript>=1.23.13
+tinyscript>=1.23.14
 xlsxwriter
