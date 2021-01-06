@@ -2,3 +2,4 @@ matplotlib
 pyzotero
 tinyscript>=1.23.14
 xlsxwriter
+pillow>=8.1.0 # not directly required, pinned by Snyk to avoid a vulnerability
