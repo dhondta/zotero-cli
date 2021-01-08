@@ -20,7 +20,7 @@ use-site-title: false
 
 ## Introduction
 
-This Tinyscript tool relies on [`pyzotero`](https://github.com/urschrei/pyzotero/) for communicating with [Zotero's Web API](https://www.zotero.org/support/dev/web_api/v3/start). It allows to list field values, show items in tables in the CLI or also export sorted items to an Excel file.
+This Tinyscript tool relies on [`pyzotero`](https://github.com/urschrei/pyzotero) for communicating with [Zotero's Web API](https://www.zotero.org/support/dev/web_api/v3/start). It allows to list field values, show items in tables in the CLI or also export sorted items to an Excel file.
 
 
 ## Setup
