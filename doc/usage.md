@@ -1,8 +1,8 @@
 ## Credentials & data cache
 
-The first time you start the tool, there is a chance (unless you used something before that created it) you don't have the cached credentials located at `~/.zotero/cach/`. You can either enter you API identifier and key through the `--id` and `--key` options or wait for the tool to ask for these. In both cases the values will be cached to `~/.zotero/cach/`. This way, you won't have to re-enter them next time. From a security perspective, the only protection is that, once created, the credentials file immediately gets the read-write permissions only for your own user. So, the API key is NOT encrypted or hashed and thus resides in cleartext, only protected from reading by other users by the applied permissions.
+The first time you start the tool, there is a chance (unless you used something before that created it) you don't have the cached credentials located at `~/.zotero/cache/`. You can either enter you API identifier and key through the `--id` and `--key` options or wait for the tool to ask for these. In both cases the values will be cached to `~/.zotero/cache/`. This way, you won't have to re-enter them next time. From a security perspective, the only protection is that, once created, the credentials file immediately gets the read-write permissions only for your own user. So, the API key is NOT encrypted or hashed and thus resides in cleartext, only protected from reading by other users by the applied permissions.
 
-Also, if the cache files do not exist, they will be download from `zotero.org` using [`pyzotero`](https://github.com/urschrei/pyzotero) and saved in `~/.zotero/cache/`. Four JSON files are cached:
+Also, if the cache files do not exist, they will be downloaded from `zotero.org` using [`pyzotero`](https://github.com/urschrei/pyzotero) and saved in `~/.zotero/cache/`. Four JSON files are cached:
 
 - `collections.json`: library's collections, downloaded using `pyzotero`'s `Zotero.collections` method. 
 - `items.json`: library's items, downloaded using `pyzotero`'s `Zotero.items` method with parameter `Zotero.everything()` in order to get everything at once.
