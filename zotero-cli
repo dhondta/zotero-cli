@@ -59,6 +59,8 @@ INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "nu
                   "numPages", "rank", "references", "year", "zscc"]
 NOTE_FIELDS = ["comments", "results", "what"]
 
+TIME_FORMATS = ["%Y", "%Y-%m", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]
+
 get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.get('firstName', "")).strip()
 
 
@@ -158,7 +160,7 @@ class ZoteroCLI(object):
                     else:
                         m = re.match(r"^(<|>|<=|>=|==)([^=]*)$", regex)
                         op, v = m.group(1), m.group(2).strip()
-                    filt = (not_, OPERATORS[op], lambda i, f: ZoteroCLI.date(i['data'][f]), ZoteroCLI.date(v))
+                    filt = (not_, OPERATORS[op], lambda i, f: ZoteroCLI.date(i['data'][f], i), ZoteroCLI.date(v))
                 # filter format: (negate, lambda, lambda's second arg)
                 elif field == "tags":
                     if regex not in self._valid_tags and regex not in ["-", "<empty>"]:
@@ -221,18 +223,18 @@ class ZoteroCLI(object):
                     if not ts.is_list(links):
                         links = [links]
                     for link in links:
-                        k = link.split("/")[-1]
+                        k = self.__objects[link.split("/")[-1]]
                         if "collections" in _filters.keys():
                             gb = True
                             for n, regex, _ in _filters['collections']:
                                 b = regex.search(", ".join(self.__objects[x]['data']['name'] for x in \
-                                                           self.__objects[k]['data']['collections']))
+                                                           k['data']['collections']))
                                 gb = gb and [b, not b][n]
                             if not gb:
                                 continue
-                        if ZoteroCLI.date(self.__objects[k]['data']['date']) > ZoteroCLI.date(i['data']['date']):
+                        if ZoteroCLI.date(k['data']['date'], k) > ZoteroCLI.date(i['data']['date'], i):
                             c += 1
-                        if ZoteroCLI.date(self.__objects[k]['data']['date']) <= ZoteroCLI.date(i['data']['date']):
+                        if ZoteroCLI.date(k['data']['date'], k) <= ZoteroCLI.date(i['data']['date'], i):
                             r += 1
                 except KeyError:
                     pass
@@ -275,7 +277,7 @@ class ZoteroCLI(object):
                         if f in NOTE_FIELDS:
                             d[f] = c.strip()
             if "year" in afields:
-                d['year'] = ZoteroCLI.date(i['data']['date']).year
+                d['year'] = ZoteroCLI.date(i['data']['date'], i).year
             # now apply filters
             pass_item = False
             for field, tfilters in _filters.items():
@@ -382,7 +384,8 @@ class ZoteroCLI(object):
                         k2 = link.split("/")[-1]
                         if k2 not in items.keys():
                             continue
-                        if ZoteroCLI.date(k1_d['date']) <= ZoteroCLI.date(self.__objects[k2]['data']['date']):
+                        k2 = self.__objects[k2]
+                        if ZoteroCLI.date(k1_d['date'], k1_d) <= ZoteroCLI.date(k2['data']['date'], k2):
                             k2_d = items.get(k2, {}).get('data')
                             if k2_d:
                                 r = k2_d['references']
@@ -499,7 +502,7 @@ class ZoteroCLI(object):
         if name == "software-in-time":
             data = {}
             for i in self._filter(["title", "date"], ["itemType:computerProgram"] + filters):
-                y = ZoteroCLI.date(i['data']['date']).year
+                y = ZoteroCLI.date(i['data']['date'], i).year
                 data.setdefault(y, [])
                 data[y].append(i['data']['title'])
             for y, t in sorted(data.items(), key=lambda x: x[0]):
@@ -517,13 +520,16 @@ class ZoteroCLI(object):
             print(ts.BorderlessTable([headers] + data))
     
     @staticmethod
-    def date(date_str):
-        for f in ["", "%Y", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]:
+    def date(date_str, data=None):
+        for f in [""] + TIME_FORMATS:
             try:
                 return datetime.strptime(date_str, f)
             except:
                 pass
-        logger.error("Bad datetime format: %s" % date_str)
+        msg = "Bad datetime format: %s" % date_str
+        if data:
+            msg += " (%s)" % (data or {}).get('data', data).get('title', "undefined")
+        logger.error(msg)
         raise ValueError
     
     @staticmethod
@@ -535,7 +541,7 @@ class ZoteroCLI(object):
     def sort(value, field=None):
         field = field or ""
         if field.startswith("date") or field.endswith("Date"):
-            return ZoteroCLI.date(value.lstrip("-")).timestamp()
+            return ZoteroCLI.date(value.lstrip("-"), "sort per %s" % field).timestamp()
         elif re.match(r"-?\d+(\.\d+)?$", str(value)) and field not in ["issue", "volume"] or field in INTEGER_FIELDS:
             try:
                 return float(-1 if value in ["", "-", None] else value)
@@ -593,9 +599,6 @@ if __name__ == '__main__':
                        note="if not defined, the first input field is selected\n"
                             "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
     initialize()
-    args.group = args.group or ts.Path("~/.zotero/group", expand=True).exists()
-    logger.debug("API identifier type set to 'group'")
-    args.id_type = ["user", "group"][args.group]
     if hasattr(args, "sort"):
         args.desc = False
         if args.sort is not None:
@@ -610,7 +613,7 @@ if __name__ == '__main__':
                 os.remove(str(CACHE_PATH.joinpath(fn)))
             except OSError:
                 pass
-    z = ZoteroCLI(args.id, args.id_type, args.key)
+    z = ZoteroCLI(args.id, ["user", "group"][args.group or ts.Path("~/.zotero/group", expand=True).exists()], args.key)
     if args.command == "count":
         z.count(args.filter or [])
     elif args.command == "export":
