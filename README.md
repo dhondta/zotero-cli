@@ -31,7 +31,7 @@ $ pip install zotero-cli-tool
 
 ## Quick Start
 
-The first time you start it, the tool will ask for your API identifier and key. It will cache it to `~/.zotero/creds.txt` this persmissions set to `rw` for your user only. Data is cached to `~/.zotero/cache/`.
+The first time you start it, the tool will ask for your API identifier and key. It will cache it to `~/.zotero/creds.txt` this persmissions set to `rw` for your user only. Data is cached to `~/.zotero/cache/`. If you are using a shared group library, you can either pass the "`-g`" ("`--group`") option in your `zotero-cli` command or, for setting it permanently, touch an empty file `~/.zotero/group`.
 
 - Manually update cached data
 

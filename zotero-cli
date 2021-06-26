@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python3
 import json
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -11,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.0.7"
+__version__   = "1.1.0"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -63,7 +63,7 @@ get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.ge
 
 
 class ZoteroCLI(object):
-    def __init__(self, api_id=None, api_key=None):
+    def __init__(self, api_id=None, api_id_type="user", api_key=None):
         if api_id is not None and api_key is not None:
             CREDS_FILE.id = api_id
             CREDS_FILE.secret = api_key
@@ -79,7 +79,7 @@ class ZoteroCLI(object):
                     setattr(self, k, json.load(f))
             except OSError:
                 self._creds()
-                self.__zot = self.__zot or zotero.Zotero(CREDS_FILE.id, "user", CREDS_FILE.secret)
+                self.__zot = self.__zot or zotero.Zotero(CREDS_FILE.id, api_id_type, CREDS_FILE.secret)
                 logger.debug("Getting %s from zotero.org..." % k)
                 if k == "collections":
                     self.collections = list(self.__zot.collections())
@@ -547,6 +547,10 @@ class ZoteroCLI(object):
 
 
 if __name__ == '__main__':
+    parser.add_argument("-g", "--group", action="store_true", help="API identifier is a group",
+                        note="the default API identifier type is 'user' ; use this option if you modified your library"
+                             "to be shared with a group of users, this can be set permanently by touching "
+                             "~/.zotero/group")
     parser.add_argument("-i", "--id", help="API identifier",
                         note="if 'id' and 'key' not specified, credentials are obtained from file '%s'" % CREDS_FILE)
     parser.add_argument("-k", "--key", help="API key",
@@ -589,6 +593,9 @@ if __name__ == '__main__':
                        note="if not defined, the first input field is selected\n"
                             "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
     initialize()
+    args.group = args.group or ts.Path("~/.zotero/group", expand=True).exists()
+    logger.debug("API identifier type set to 'group'")
+    args.id_type = ["user", "group"][args.group]
     if hasattr(args, "sort"):
         args.desc = False
         if args.sort is not None:
@@ -603,7 +610,7 @@ if __name__ == '__main__':
                 os.remove(str(CACHE_PATH.joinpath(fn)))
             except OSError:
                 pass
-    z = ZoteroCLI(args.id, args.key)
+    z = ZoteroCLI(args.id, args.id_type, args.key)
     if args.command == "count":
         z.count(args.filter or [])
     elif args.command == "export":
