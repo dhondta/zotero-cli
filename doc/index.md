@@ -1,3 +1,5 @@
+# Zotero CLI
+
 ## Introduction
 
 This Tinyscript tool aims to manipulate Zotero references, relying on [`pyzotero`](https://github.com/urschrei/pyzotero), applying simple filtering if needed, in order to:
@@ -6,6 +8,8 @@ This Tinyscript tool aims to manipulate Zotero references, relying on [`pyzotero
 - List field values (e.g. for spotting bad values)
 - Show items in the terminal, given a set of fields
 - Export items to an Excel file, given a set of fields
+- Mark items as read/unread
+- Get the most relevant items (based on a PageRank-like algorithm)
 
 Quick example:
 
@@ -24,16 +28,12 @@ $ zotero-cli list itemType
 
 ```
 
------
-
 ## System Requirements
 
 - **Platform**: Linux
 - **Python**: 2 or 3
 
------
-
 ## Installation
 
-This tool is available on [PyPi](https://pypi.python.org/pypi/zotero-cli-tool/) (DO NOT confuse with this [package](https://pypi.python.org/pypi/zotero-cli/), this another related tool) and can be simply installed using Pip via `pip install zotero-cli-tool`.
+This tool is available on [PyPi](https://pypi.python.org/pypi/zotero-cli-tool/) (DO NOT confuse with this [package](https://pypi.python.org/pypi/zotero-cli/) which is another related tool) and can be simply installed using Pip via `pip install zotero-cli-tool`.
 

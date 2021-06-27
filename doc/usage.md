@@ -1,3 +1,5 @@
+# Usage
+
 ## Credentials & data cache
 
 The first time you start the tool, there is a chance (unless you used something before that created it) you don't have the cached credentials located at `~/.zotero/cache/`. You can either enter you API identifier and key through the `--id` and `--key` options or wait for the tool to ask for these. In both cases the values will be cached to `~/.zotero/cache/`. This way, you won't have to re-enter them next time. From a security perspective, the only protection is that, once created, the credentials file immediately gets the read-write permissions only for your own user. So, the API key is NOT encrypted or hashed and thus resides in cleartext, only protected from reading by other users by the applied permissions.
@@ -177,4 +179,54 @@ Library items can be manipulated in different ways, as shown hereafter.
 
         :::sh
         $ zotero-cli show year title numPages -f "collections:biblio" -f "date:>Sep 2018" -s date -l ">rank:2"
+
+## Use predefined queries
+
+Some queries are predefined for the sake of simplicity.
+
+```sh
+$ zotero-cli show - --query "top-50-most-relevants"
+
+    Year  Title   #Pages  Type             
+    ----  -----   ------  ----   
+    [...]          
+```
+
+!!! note "Field argument"
+    
+    Use the "`-`" field argument to use the list of fields to be displayed from the query. If other fields should be displayed, they can be entered instead of "`-`" as normal ; this will override the fields from the query.
+
+```sh
+$ zotero-cli show year title --query "top-50-most-relevants"
+
+    Year  Title
+    ----  -----
+    [...]          
+```
+
+Moreover, using the `--limit` or `--sort` options will override these of the query.
+
+```sh
+$ zotero-cli show year title --sort title --query "top-10-most-relevants"
+
+$ zotero-cli show year title --limit "title:5" --query "top-10-most-relevants"
+
+```
+
+The following queries are currently implemented:
+
+- `top-10-most-relevants`: returns the top-10 most relevant references, setting the `rank` field for ranking items according to a PageRank-like algorithm ; the displayed fields are `Year`, `Title`, `#Pages` and `Type`.
+- `top-50-most-relevants`: identical to the previous query, but with the top-50.
+- `no-attachment`: returns the list of items with no attachment ; useful for identifying references for which the related document was not attached yet, this only displays the `Title`.
+
+## Mark items as read/unread
+
+Library items can be marked as read or unread. By default, items are logically considered unread and are therefore displayed in bold. Once marked as read, they are not displayed in bold anymore.
+
+```sh
+$ zotero-cli mark --filter "key:QZR5QAIW"
+
+$ zotero-cli mark --query "top-10-most-relevants"
+
+```
 
