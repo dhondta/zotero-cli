@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
 import json
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -11,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.1.1"
+__version__   = "1.2.0"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -35,6 +35,7 @@ CACHE_FILES = {
     'attachments': "attachments.json",
     'collections': "collections.json",
     'items':       "items.json",
+    'marks':       "marks.json",
     'notes':       "notes.json",
 }
 CACHE_PATH = ts.Path("~/.zotero/cache", create=True, expand=True)
@@ -62,9 +63,9 @@ TIME_FORMATS = ["%Y", "%Y-%m", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y
 
 CHARTS = ["software-in-time"]
 QUERIES = {
-    'no-attachment': {'filter': ["numAttachments:0"], 'fields': ["title"]},
-    'top-10-most-relevants': {'limit': ">rank:10", 'fields': ["year", "title", "numPages", "itemType"]},
-    'top-50-most-relevants': {'limit': ">rank:50", 'fields': ["year", "title", "numPages", "itemType"]},
+    'no-attachment':         {'filter': ["numAttachments:0"], 'fields': ["title"]},
+    'top-10-most-relevants': {'limit': ">rank:10", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
+    'top-50-most-relevants': {'limit': ">rank:50", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
 }
 
 get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.get('firstName', "")).strip()
@@ -109,10 +110,22 @@ class ZoteroCLI(object):
                 with cached_file.open('w') as f:
                     logger.debug("Saving %s to cache '%s'..." % (k, cached_file))
                     json.dump(getattr(self, k), f)
+        self._marks_file = CACHE_PATH.joinpath(CACHE_FILES['marks'])
+        if not self._marks_file.exists():
+            self._marks_file.write_text("{}")
+        with self._marks_file.open() as f:
+            logger.debug("Opening marks from cache '%s'..." % self._marks_file)
+            self.marks = json.load(f)
         self.__objects = {}
         for a in CACHE_FILES.keys():
-            for x in getattr(self, a):
-                self.__objects[x['key']] = x
+            d = getattr(self, a)
+            if isinstance(d, list):
+                for x in d:
+                    try:
+                        self.__objects[x['key']] = x
+                    except:
+                        print(x)
+                        raise
         self._valid_fields = []
         self._valid_tags = []
         # parse items, collecting valid fields and tags
@@ -441,10 +454,35 @@ class ZoteroCLI(object):
             data = data[::-1]
         return [ZoteroCLI.header(f) for f in fields], data
     
+    def _marks(self, marker, filters=None, sort=None, desc=False, limit=None):
+        """ Mark the selected items with a specified marker.
+        
+        NB: by convetion, a marker can be submitted as its negation with the "un" prefix ; e.g. read <> unread
+        """
+        negate = False
+        if marker.startswith("un"):
+            marker, negate = marker[2:], True
+        self.marks.setdefault(marker, [])
+        _, data = self._items(["key"], filters, sort, desc, limit)
+        for row in data:
+            k = row[0]
+            if negate:
+                try:
+                    self.marks[marker].remove(k)
+                    logger.debug("Unmarked %s from %s" % (k, marker))
+                except ValueError:
+                    pass
+            elif k not in self.marks[marker]:
+                logger.debug("Marked %s as %s" % (k, marker))
+                self.marks[marker].append(k)
+        with self._marks_file.open('w') as f:
+            logger.debug("Saving marks to cache '%s'..." % self._marks_file)
+            json.dump(self.marks, f)
+    
     @ts.failsafe
     def count(self, filters=None):
         """ Count items while applying filters. """
-        _, data = self._items(["title"], filters)
+        _, data = self._items(["title"], filters or [])
         print(len(data))
     
     @ts.failsafe
@@ -512,6 +550,11 @@ class ZoteroCLI(object):
         print(ts.BorderlessTable([[ZoteroCLI.header(field)]] + data))
     
     @ts.failsafe
+    def mark(self, read, filters=None, sort=None, desc=False, limit=None):
+        """ Mark the selected items as read/unread. """
+        self._marks(["unread", "read"][read], filters, sort, desc, limit)
+    
+    @ts.failsafe
     def plot(self, name, filters=None):
         """ Plot a chart given its slug. """
         if name == "software-in-time":
@@ -530,9 +573,21 @@ class ZoteroCLI(object):
     #@ts.failsafe
     def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
         """ Show the selected fields of items while applying filters. """
+        output_key = "key" in fields
+        if not output_key:
+            fields = ["key"] + fields
         headers, data = self._items(fields, filters, sort, desc, limit)
+        data_formatted = []
+        for row in data:
+            k = row[fields.index("key")]
+            row = [ts.txt2italic(v) if h == "Title" else v for h, v in zip(headers, row)]
+            if k not in self.marks.get('read', []):
+                row = [ts.txt2bold(v) for v in row]
+            data_formatted.append(row[int(not output_key):])
+        if not output_key:
+            headers = headers[1:]
         if len(headers) > 0:
-            print(ts.BorderlessTable([headers] + data))
+            print(ts.BorderlessTable([headers] + data_formatted))
     
     @ts.failsafe
     def view(self, name, value, fields=None):
@@ -618,7 +673,7 @@ _set_args = lambda sp, *args: [_set_arg(sp, a) for a in args] and None
 if __name__ == '__main__':
     # main parser
     parser.add_argument("-g", "--group", action="store_true", help="API identifier is a group",
-                        note="the default API identifier type is 'user' ; use this option if you modified your library"
+                        note="the default API identifier type is 'user' ; use this option if you modified your library "
                              "to be shared with a group of users, this can be set permanently by touching "
                              "~/.zotero/group")
     parser.add_argument("-i", "--id", help="API identifier",
@@ -639,6 +694,9 @@ if __name__ == '__main__':
     _set_args(clist, "filter", "query")
     clist.add_argument("-l", "--limit", type=ts.pos_int, help="limit the number of displayed records")
     clist.add_argument("--desc", action="store_true", help="sort results in descending order")
+    cmark = sparsers.add_parser("mark", help="mark items as (un)read")
+    _set_args(cmark, "filter", "limit", "query", "sort")
+    cmark.add_argument("-u", "--unread", action="store_true", help="set as unread")
     cplot = sparsers.add_parser("plot", help="plot various information using Matplotlib")
     cplot.add_argument("chart", choices=CHARTS, help="chart to be plotted")
     _set_args(cplot, "filter", "query")
@@ -653,7 +711,7 @@ if __name__ == '__main__':
     cview.add_argument("field", nargs="+", help="field to be shown")
     initialize()
     if args.query:
-        if args.field == ["-"]:
+        if hasattr(args, "field") and args.field == ["-"]:
             args.field = QUERIES[args.query].get('fields', ["title"])
         args.filter.extend(QUERIES[args.query].get('filter', []))
         if args.limit is None:
@@ -676,11 +734,14 @@ if __name__ == '__main__':
                 pass
     z = ZoteroCLI(args.id, ["user", "group"][args.group or ts.Path("~/.zotero/group", expand=True).exists()], args.key)
     if args.command == "count":
-        z.count(args.filter or [])
+        z.count(args.filter)
     elif args.command == "export":
         z.export(args.field, args.filter, args.sort, args.desc, args.limit)
     elif args.command == "list":
         z.list(args.field, args.filter, args.desc, args.limit)
+    elif args.command == "mark":
+        args.filter.append("numPages:>0")
+        z.mark(not args.unread, args.filter, args.sort, args.desc, args.limit)
     elif args.command == "plot":
         z.plot(args.chart)
     elif args.command == "show":
