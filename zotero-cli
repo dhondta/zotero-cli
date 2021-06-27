@@ -40,7 +40,6 @@ CACHE_FILES = {
 CACHE_PATH = ts.Path("~/.zotero/cache", create=True, expand=True)
 CREDS_FILE = ts.CredentialsPath("~/.zotero")
 
-CHARTS = ["software-in-time"]
 FILTERED_TYPES = ["computerProgram", "document", "webpage"]
 OPERATORS = {
     '==': operator.eq,
@@ -60,6 +59,13 @@ INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "nu
 NOTE_FIELDS = ["comments", "results", "what"]
 
 TIME_FORMATS = ["%Y", "%Y-%m", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]
+
+CHARTS = ["software-in-time"]
+QUERIES = {
+    'no-attachment': {'filter': ["numAttachments:0"], 'fields': ["title"]},
+    'top-10-most-relevants': {'limit': ">rank:10", 'fields': ["year", "title", "numPages", "itemType"]},
+    'top-50-most-relevants': {'limit': ">rank:50", 'fields': ["year", "title", "numPages", "itemType"]},
+}
 
 get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.get('firstName', "")).strip()
 
@@ -150,9 +156,11 @@ class ZoteroCLI(object):
                 if not_:
                     field = field[1:]
                 # filter format: (negate, comparison operator, first comparison value's lambda, second comparison value)
-                if field in set(INTEGER_FIELDS) - set(["rank"]) and re.match(r"^(<|>|<=|>=|==)\d+$", regex):
-                    m = re.match(r"^(<|>|<=|>=|==)(\d+)$", regex)
+                if field in set(INTEGER_FIELDS) - set(["rank"]) and re.match(r"^(|<|>|<=|>=|==)\d+$", regex):
+                    m = re.match(r"^(|<|>|<=|>=|==)(\d+)$", regex)
                     op, v = m.group(1), m.group(2).strip()
+                    if op == "":
+                        op = "=="
                     filt = (not_, OPERATORS[op], lambda i, f: i['data'][f], int(v))
                 elif field.startswith("date"):
                     if regex in ["-", "<empty>"]:
@@ -323,6 +331,7 @@ class ZoteroCLI(object):
         filters = filters or []
         sort = sort or fields[0]
         data = []
+        age = True
         # extract the limit field
         lfield = None
         if limit is not None:
@@ -330,9 +339,14 @@ class ZoteroCLI(object):
                 lfield, limit = limit.split(":")
                 lfield = lfield.strip()
                 lfdesc = False
+                # handle [<>] as sort orders
                 if lfield[0] in "<>":
                     lfdesc = lfield[0] == ">"
                     lfield = lfield[1:]
+                # handle "rank*" as using the strict rank, that is, with no damping factor relatd to the item's age
+                if lfield == "rank*":
+                    age = False
+                    lfield = "rank"
             except ValueError:
                 pass
             if not str(limit).isdigit() or int(limit) <= 0:
@@ -358,17 +372,17 @@ class ZoteroCLI(object):
         if "rank" in ffields:
             logger.debug("Computing ranks...")
             # principle: items with a valid date get a weight, others (with year==1900) do not
-            self.ranks = {k: 1.0/len(items) if i['data']['year'] > 1900 else 0 for k, i in items.items()}
+            self.ranks = {k: 1./len(items) if i['data']['year'] > 1900 else 0. for k, i in items.items()}
             y = set(i['data']['year'] for i in items.values()) - {1900}
             # min/max years are computed to take item's age into account
             y_min, y_max = min(y), max(y)
             dy = float(y_max - y_min)
             # in order not to get a null damping factor for items with minimum year, we shift y_min
-            y_min -= max(1, dy // 10)
+            y_min -= max(1., dy // 10)
             dy = float(y_max - y_min)
             # now we can iterate
             prev = tuple(self.ranks.values())
-            for i in range(len(self.ranks)):
+            for n in range(len(self.ranks)):
                 for k1 in self.ranks.keys():
                     k1_d = self.__objects[k1]['data']
                     links = k1_d['relations'].get('dc:relation', [])
@@ -384,17 +398,18 @@ class ZoteroCLI(object):
                         k2 = link.split("/")[-1]
                         if k2 not in items.keys():
                             continue
-                        k2 = self.__objects[k2]
-                        if ZoteroCLI.date(k1_d['date'], k1_d) <= ZoteroCLI.date(k2['data']['date'], k2):
+                        k2_d = self.__objects[k2]['data']
+                        if ZoteroCLI.date(k1_d['date'], k1_d) <= ZoteroCLI.date(k2_d['date'], k2_d):
                             k2_d = items.get(k2, {}).get('data')
                             if k2_d:
                                 r = k2_d['references']
                                 if r > 0:
                                     # consider a damping factor on a per-item basis, taking age into account
-                                    d2 = float(items[k2]['data']['year'] - y_min) / dy
-                                    self.ranks[k1] += d2 * self.ranks.get(k2, 0) / r
+                                    df = float(k2_d['year'] - y_min) / dy if age else 1.
+                                    self.ranks[k1] += df * self.ranks.get(k2, 0.) / r
                 # check for convergence
                 if tuple(self.ranks.values()) == prev:
+                    logger.debug("Ranking algorithm converged after %d iterations" % n)
                     break
                 prev = tuple(self.ranks.values())
             items = {i['key']: i for i in self._filter(ffields, filters)}
@@ -512,12 +527,41 @@ class ZoteroCLI(object):
             logger.error("Bad chart")
             raise ValueError
     
-    @ts.failsafe
+    #@ts.failsafe
     def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
         """ Show the selected fields of items while applying filters. """
         headers, data = self._items(fields, filters, sort, desc, limit)
         if len(headers) > 0:
             print(ts.BorderlessTable([headers] + data))
+    
+    @ts.failsafe
+    def view(self, name, value, fields=None):
+        """ View a single item given a field and its value. """
+        headers, data = self._items(fields, ["%s:%s" % (name, value)])
+        for h, d in zip(headers, data[0]):
+            hb = ts.txt2bold(h)
+            if h == "Title":
+                d = ts.txt2italic(d)
+            try:
+                d = ast.literal_eval(d)
+            except:
+                pass
+            if not isinstance(d, dict):
+                print("{: <24}: {}".format(hb, d))
+            else:
+                if len(d) == 0:
+                    print("{: <24}: -".format(hb))
+                elif h == "Relations":
+                    print("{: <24}:".format(hb))
+                    rel = d['dc:relation']
+                    if isinstance(rel, str):
+                        rel = [rel]
+                    for k in rel:
+                        print("- %s" % ts.txt2italic(self.__objects[k.split("/")[-1]]['data']['title']))
+                else:
+                    print("{: <24}:\n".format(hb))
+                    for i in d:
+                        print("- %s" % i)
     
     @staticmethod
     def date(date_str, data=None):
@@ -552,7 +596,27 @@ class ZoteroCLI(object):
             return str(value).lower()
 
 
+def _set_arg(subparser, arg, msg=None):
+    """ Shortcut function to set arguments repeated for multiple subparsers. """
+    if arg == "filter":
+        subparser.add_argument("-f", "--filter", action="extend", nargs="*", note="format: [field]:[regex]",
+                               help=msg or "filter to be applied on field's value")
+    elif arg == "limit":
+        subparser.add_argument("-l", "--limit", help="limit the number of displayed records", note="format: either a "
+                               "number or [field]:[number]\n    '<' and '>' respectively indicates ascending or "
+                               "descending order (default: ascending)")
+    elif arg == "query":
+        subparser.add_argument("-q", "--query", choices=list(QUERIES.keys()), help="use a predefined query",
+                               note="this can be combined with additional filters")
+    elif arg == "sort":
+        subparser.add_argument("-s", "--sort", help="field to be sorted on", note="if not defined, the first input "
+                               "field is selected\n    '<' and '>' respectively indicates ascending or descending order"
+                               " (default: ascending)")
+_set_args = lambda sp, *args: [_set_arg(sp, a) for a in args] and None
+
+
 if __name__ == '__main__':
+    # main parser
     parser.add_argument("-g", "--group", action="store_true", help="API identifier is a group",
                         note="the default API identifier type is 'user' ; use this option if you modified your library"
                              "to be shared with a group of users, this can be set permanently by touching "
@@ -562,43 +626,40 @@ if __name__ == '__main__':
     parser.add_argument("-k", "--key", help="API key",
                         note="if not specified while 'id' is, 'key' is asked as a password")
     parser.add_argument("-r", "--reset", action="store_true", help="remove cached collections and items")
+    # commands: count | export | list | plot | reset | show | view
     sparsers = parser.add_subparsers(dest="command", help="command to be executed")
     ccount = sparsers.add_parser("count", help="count items")
-    ccount.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied while counting",
-                        note="format: [field]:[regex]")
+    _set_arg(ccount, "filter", "filter to be applied while counting")
+    _set_arg(ccount, "query")
     cexpt = sparsers.add_parser("export", help="export items to an Excel file")
     cexpt.add_argument("field", nargs="+", help="field to be shown")
-    cexpt.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
-                       note="format: [field]:[regex]")
-    cexpt.add_argument("-l", "--limit", help="limit the number of displayed records",
-                       note="format: either a number or [field]:[number]\n"
-                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
-    cexpt.add_argument("-s", "--sort", help="field to be sorted on",
-                       note="if not defined, the first input field is selected\n"
-                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
+    _set_args(cexpt, "filter", "limit", "query", "sort")
     clist = sparsers.add_parser("list", help="list distinct values for the given field")
     clist.add_argument("field", help="field whose distinct values are to be listed")
-    clist.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
-                       note="format: [field]:[regex]")
+    _set_args(clist, "filter", "query")
     clist.add_argument("-l", "--limit", type=ts.pos_int, help="limit the number of displayed records")
     clist.add_argument("--desc", action="store_true", help="sort results in descending order")
     cplot = sparsers.add_parser("plot", help="plot various information using Matplotlib")
     cplot.add_argument("chart", choices=CHARTS, help="chart to be plotted")
-    cplot.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
-                       note="format: [field]:[regex]")
+    _set_args(cplot, "filter", "query")
     creset = sparsers.add_parser("reset", help="reset cached collections and items")
     creset.add_argument("-r", "--reset-items", action="store_true", help="reset items only")
-    cshow = sparsers.add_parser("show", help="show items")
+    cshow = sparsers.add_parser("show", help="show a list of items")
     cshow.add_argument("field", nargs="+", help="field to be shown")
-    cshow.add_argument("-f", "--filter", action="extend", nargs="*", help="filter to be applied on field's value",
-                       note="format: [field]:[regex]")
-    cshow.add_argument("-l", "--limit", help="limit the number of displayed records",
-                       note="format: either a number or [field]:[number]\n"
-                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
-    cshow.add_argument("-s", "--sort", help="field to be sorted on",
-                       note="if not defined, the first input field is selected\n"
-                            "    '<' and '>' respectively indicates ascending or descending order (default: ascending)")
+    _set_args(cshow, "filter", "limit", "query", "sort")
+    cview = sparsers.add_parser("view", help="view a single item")
+    cview.add_argument("name", help="field name for selection")
+    cview.add_argument("value", help="field value to be selected")
+    cview.add_argument("field", nargs="+", help="field to be shown")
     initialize()
+    if args.query:
+        if args.field == ["-"]:
+            args.field = QUERIES[args.query].get('fields', ["title"])
+        args.filter.extend(QUERIES[args.query].get('filter', []))
+        if args.limit is None:
+            args.limit = QUERIES[args.query].get('limit')
+        if args.sort is None:
+            args.sort = QUERIES[args.query].get('sort')
     if hasattr(args, "sort"):
         args.desc = False
         if args.sort is not None:
@@ -624,4 +685,6 @@ if __name__ == '__main__':
         z.plot(args.chart)
     elif args.command == "show":
         z.show(args.field, args.filter, args.sort, args.desc, args.limit)
+    elif args.command == "view":
+        z.view(args.name, args.value, args.field)
 

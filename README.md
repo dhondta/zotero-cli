@@ -94,6 +94,25 @@ export.xlsx: Microsoft Excel 2007+
 
 ```
 
+- Use a predefined query
+
+```sh
+$ zotero-cli show - --query "top-50-most-relevants"
+```
+
+> **Note**: "`-`" is used for the `field` positional argument to tell the tool to select the predefined list of fields included in the query.
+
+This is equivalent to:
+
+```sh
+$ zotero-cli show year title numPages itemType --limit ">rank:50"
+```
+
+Available queries:
+- `no-attachment`: list of all items with no attachment ; displayed fields: `title`
+- `top-10-most-relevants`: top-10 best ranked items ; displayed fields: `year`, `title`, `numPages`, `itemType`
+- `top-50-most-relevants`: same as top-10 but with the top-50
+
 
 ## Special Features
 
