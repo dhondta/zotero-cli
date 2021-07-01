@@ -113,6 +113,19 @@ Available queries:
 - `top-10-most-relevants`: top-10 best ranked items ; displayed fields: `year`, `title`, `numPages`, `itemType`
 - `top-50-most-relevants`: same as top-10 but with the top-50
 
+- Mark items
+
+```sh
+$ zotero-cli mark read --filter "title:a nice paper"
+$ zotero-cli mark unread --filter "title:a nice paper"
+```
+
+> **Markers**:
+> 
+> - `read` / `unread`: by default, items are displayed in bold ; marking an item as read will make it display as normal
+> - `irrelevant` / `relevant`: this allows to exclude a result from the output list of items
+> - `ignore` / `unignore`: this allows to completely ignore an item, including in the ranking algorithm
+
 
 ## Special Features
 

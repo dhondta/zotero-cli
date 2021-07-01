@@ -219,7 +219,7 @@ The following queries are currently implemented:
 - `top-50-most-relevants`: identical to the previous query, but with the top-50.
 - `no-attachment`: returns the list of items with no attachment ; useful for identifying references for which the related document was not attached yet, this only displays the `Title`.
 
-## Mark items as read/unread
+## Mark items
 
 Library items can be marked as read or unread. By default, items are logically considered unread and are therefore displayed in bold. Once marked as read, they are not displayed in bold anymore.
 
@@ -229,4 +229,12 @@ $ zotero-cli mark --filter "key:QZR5QAIW"
 $ zotero-cli mark --query "top-10-most-relevants"
 
 ```
+
+!!! note "Available markers"
+ 
+    - `read` / `unread`: by default, items are displayed in bold ; marking an item as read will make it display as normal
+    - `irrelevant` / `relevant`: this allows to exclude a result from the output list of items
+    - `ignore` / `unignore`: this allows to completely ignore an item, including in the ranking algorithm
+
+NB: Markers are stored with [other JSON files in the cache](#credentials-data-cache), that is, at `~/.zotero/cache/marks.json`.
 

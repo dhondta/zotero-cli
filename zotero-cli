@@ -11,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.2.0"
+__version__   = "1.2.1"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -61,7 +61,10 @@ NOTE_FIELDS = ["comments", "results", "what"]
 
 TIME_FORMATS = ["%Y", "%Y-%m", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]
 
-CHARTS = ["software-in-time"]
+CHARTS  = ["software-in-time"]
+MARKERS = [("read", "unread", "this will display the entry as normal instead of bold"),
+           ("irrelevant", "relevant", "this will exclude the entry from the shown results"),
+           ("ignore", "unignore", "this will totally ignore the entry while getting the filtered items")]
 QUERIES = {
     'no-attachment':         {'filter': ["numAttachments:0"], 'fields': ["title"]},
     'top-10-most-relevants': {'limit': ">rank:10", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
@@ -155,7 +158,7 @@ class ZoteroCLI(object):
             CREDS_FILE.ask("API ID: ", "API key: ")
             CREDS_FILE.save()
     
-    def _filter(self, fields=None, filters=None):
+    def _filter(self, fields=None, filters=None, force=False):
         """ Apply one or more filters to the items. """
         # validate and make filters
         _filters = {}
@@ -318,7 +321,7 @@ class ZoteroCLI(object):
                         break
                 if pass_item:
                     break
-            if not pass_item:
+            if not pass_item and (not tmp_i['key'] in self.marks.get('ignore', []) or force):
                 yield tmp_i
     
     def _format_value(self, value, field=""):
@@ -339,7 +342,7 @@ class ZoteroCLI(object):
             return str(get_name(value) or value)
         return str(value)
     
-    def _items(self, fields=None, filters=None, sort=None, desc=False, limit=None):
+    def _items(self, fields=None, filters=None, sort=None, desc=False, limit=None, force=False):
         """ Get items, computing speciel fields and applying filters. """
         filters = filters or []
         sort = sort or fields[0]
@@ -377,7 +380,8 @@ class ZoteroCLI(object):
                     ffields.append(f)
         if limit is not None:
             ffields.append(lfield)
-        items = {i['key']: i for i in self._filter(ffields, [f for f in filters if not re.match(r"\~?rank\:", f)])}
+        items = {i['key']: i for i in \
+                 self._filter(ffields, [f for f in filters if not re.match(r"\~?rank\:", f)], force)}
         if len(items) == 0:
             logger.info("No data")
             return [], []
@@ -425,12 +429,17 @@ class ZoteroCLI(object):
                     logger.debug("Ranking algorithm converged after %d iterations" % n)
                     break
                 prev = tuple(self.ranks.values())
-            items = {i['key']: i for i in self._filter(ffields, filters)}
+            items = {i['key']: i for i in self._filter(ffields, filters, force)}
             for k, i in items.items():
                 i['data']['rank'] = self.ranks.get(k)
             if len(items) == 0:
                 logger.info("No data")
                 return
+        # exclude irrelevant items from the list of items
+        if not force:
+            for k, i in {k: v for k, v in items.items()}.items():
+                if k in self.marks.get('irrelevant', []):
+                    del items[k]
         # apply the limit on the selected items
         if limit is not None:
             if lfield is not None:
@@ -459,11 +468,16 @@ class ZoteroCLI(object):
         
         NB: by convetion, a marker can be submitted as its negation with the "un" prefix ; e.g. read <> unread
         """
-        negate = False
-        if marker.startswith("un"):
-            marker, negate = marker[2:], True
+        m1, m2, negate = None, None, False
+        for m1, m2, _ in MARKERS:
+            if marker in [m1, m2]:
+                negate = marker == m2
+                marker = m1
+                break
+        if m1 is None:
+            raise ValueError("Bad marker (should be one of: {})".format("|".join(x for p in MARKERS for x in p[:2])))
         self.marks.setdefault(marker, [])
-        _, data = self._items(["key"], filters, sort, desc, limit)
+        _, data = self._items(["key"], filters, sort, desc, limit, True)
         for row in data:
             k = row[0]
             if negate:
@@ -475,6 +489,7 @@ class ZoteroCLI(object):
             elif k not in self.marks[marker]:
                 logger.debug("Marked %s as %s" % (k, marker))
                 self.marks[marker].append(k)
+        self.marks = {k: l for k, l in self.marks.items() if len(l) > 0}
         with self._marks_file.open('w') as f:
             logger.debug("Saving marks to cache '%s'..." % self._marks_file)
             json.dump(self.marks, f)
@@ -550,9 +565,9 @@ class ZoteroCLI(object):
         print(ts.BorderlessTable([[ZoteroCLI.header(field)]] + data))
     
     @ts.failsafe
-    def mark(self, read, filters=None, sort=None, desc=False, limit=None):
+    def mark(self, marker, filters=None, sort=None, desc=False, limit=None):
         """ Mark the selected items as read/unread. """
-        self._marks(["unread", "read"][read], filters, sort, desc, limit)
+        self._marks(marker, filters, sort, desc, limit)
     
     @ts.failsafe
     def plot(self, name, filters=None):
@@ -654,7 +669,7 @@ class ZoteroCLI(object):
 def _set_arg(subparser, arg, msg=None):
     """ Shortcut function to set arguments repeated for multiple subparsers. """
     if arg == "filter":
-        subparser.add_argument("-f", "--filter", action="extend", nargs="*", note="format: [field]:[regex]",
+        subparser.add_argument("-f", "--filter", action="extend", nargs="*", default=[], note="format: [field]:[regex]",
                                help=msg or "filter to be applied on field's value")
     elif arg == "limit":
         subparser.add_argument("-l", "--limit", help="limit the number of displayed records", note="format: either a "
@@ -694,9 +709,10 @@ if __name__ == '__main__':
     _set_args(clist, "filter", "query")
     clist.add_argument("-l", "--limit", type=ts.pos_int, help="limit the number of displayed records")
     clist.add_argument("--desc", action="store_true", help="sort results in descending order")
-    cmark = sparsers.add_parser("mark", help="mark items as (un)read")
+    cmark = sparsers.add_parser("mark", help="mark items with a marker")
+    cmark.add_argument("marker", choices=[x for p in MARKERS for x in p[:2]], help="marker to be set",
+                       note="possible values:\n - {}".format("\n - ".join("%s: %s" % (p[0], p[2]) for p in MARKERS)))
     _set_args(cmark, "filter", "limit", "query", "sort")
-    cmark.add_argument("-u", "--unread", action="store_true", help="set as unread")
     cplot = sparsers.add_parser("plot", help="plot various information using Matplotlib")
     cplot.add_argument("chart", choices=CHARTS, help="chart to be plotted")
     _set_args(cplot, "filter", "query")
@@ -741,7 +757,7 @@ if __name__ == '__main__':
         z.list(args.field, args.filter, args.desc, args.limit)
     elif args.command == "mark":
         args.filter.append("numPages:>0")
-        z.mark(not args.unread, args.filter, args.sort, args.desc, args.limit)
+        z.mark(args.marker, args.filter, args.sort, args.desc, args.limit)
     elif args.command == "plot":
         z.plot(args.chart)
     elif args.command == "show":
