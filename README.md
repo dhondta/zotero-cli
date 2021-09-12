@@ -5,15 +5,6 @@
 [![Requirements Status](https://requires.io/github/dhondta/zotero-cli/requirements.svg?branch=main)](https://requires.io/github/dhondta/zotero-cli/requirements/?branch=main)
 [![License](https://img.shields.io/pypi/l/zotero-cli-tool.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
 
-## Table of Contents
-
-- [Introduction](#introduction)
-- [Setup](#setup)
-- [Quick Start](#quick-start)
-- [Special Features](#special-features)
-
------
-
 ## Introduction
 
 This Tinyscript tool relies on [`pyzotero`](https://github.com/urschrei/pyzotero) for communicating with [Zotero's Web API](https://www.zotero.org/support/dev/web_api/v3/start). It allows to list field values, show items in tables in the CLI or also export sorted items to an Excel file.
