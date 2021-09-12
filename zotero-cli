@@ -11,7 +11,7 @@ from tinyscript import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.2.1"
+__version__   = "1.2.2"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -726,7 +726,7 @@ if __name__ == '__main__':
     cview.add_argument("value", help="field value to be selected")
     cview.add_argument("field", nargs="+", help="field to be shown")
     initialize()
-    if args.query:
+    if getattr(args, "query", None):
         if hasattr(args, "field") and args.field == ["-"]:
             args.field = QUERIES[args.query].get('fields', ["title"])
         args.filter.extend(QUERIES[args.query].get('filter', []))
@@ -742,7 +742,7 @@ if __name__ == '__main__':
                 args.sort = args.sort[1:]
     if args.command == "reset" or args.reset:
         for k, fn in CACHE_FILES.items():
-            if getattr(args, "reset_items", False) and k not in ["items", "attachments", "notes"]:
+            if getattr(args, "reset_items", False) and k not in ["items", "attachments", "notes"] or k == "marks":
                 continue
             try:
                 os.remove(str(CACHE_PATH.joinpath(fn)))
