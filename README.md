@@ -1,3 +1,6 @@
+<h1 align="center">Zotero CLI <a href="https://twitter.com/intent/tweet?text=Zotero%20CLI%20-%20A%20Tinyscript%20tool%20for%20sorting,%20ranking%20and%20exporting%20Zotero%20references%20based%20on%20pyzotero.%0D%0Ahttps%3a%2f%2fgithub%2ecom%2fdhondta%2fzotero-cli%0D%0A&hashtags=python,zotero,cli,pyzotero,pagerank"><img src="https://img.shields.io/badge/Tweet--lightgrey?logo=twitter&style=social" alt="Tweet" height="20"/></a></h1>
+<h3 align="center">Sort and rank your Zotero references easy from your CLI.</h3>
+
 [![PyPi](https://img.shields.io/pypi/v/zotero-cli-tool.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
 ![Platform](https://img.shields.io/badge/platform-linux-yellow.svg)
 [![Read The Docs](https://readthedocs.org/projects/zotero-cli/badge/?version=latest)](http://zotero-cli.readthedocs.io/en/latest/?badge=latest)
@@ -5,23 +8,14 @@
 [![Requirements Status](https://requires.io/github/dhondta/zotero-cli/requirements.svg?branch=main)](https://requires.io/github/dhondta/zotero-cli/requirements/?branch=main)
 [![License](https://img.shields.io/pypi/l/zotero-cli-tool.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
 
-## Introduction
+This [Tinyscript](https://github.com/dhondta/zotero-cli) tool relies on [`pyzotero`](https://github.com/urschrei/pyzotero) for communicating with [Zotero's Web API](https://www.zotero.org/support/dev/web_api/v3/start). It allows to list field values, show items in tables in the CLI or also export sorted items to an Excel file.
 
-This Tinyscript tool relies on [`pyzotero`](https://github.com/urschrei/pyzotero) for communicating with [Zotero's Web API](https://www.zotero.org/support/dev/web_api/v3/start). It allows to list field values, show items in tables in the CLI or also export sorted items to an Excel file.
-
-
-## Setup
 
 ```session
 $ pip install zotero-cli-tool
 ```
 
-> **Behind a proxy ?**
-> 
-> Do not forget to add option `--proxy=http://[user]:[pwd]@[host]:[port]` to your pip command.
-
-
-## Quick Start
+## :fast_forward: Quick Start
 
 The first time you start it, the tool will ask for your API identifier and key. It will cache it to `~/.zotero/creds.txt` this persmissions set to `rw` for your user only. Data is cached to `~/.zotero/cache/`. If you are using a shared group library, you can either pass the "`-g`" ("`--group`") option in your `zotero-cli` command or, for setting it permanently, touch an empty file `~/.zotero/group`.
 
@@ -119,7 +113,7 @@ $ zotero-cli mark unread --filter "title:a nice paper"
 > - `ignore` / `unignore`: this allows to completely ignore an item, including in the ranking algorithm
 
 
-## Special Features
+## :bulb: Special Features
 
 Some additional fields can be used for listing/filtering/showing/exporting data.
 
@@ -148,3 +142,11 @@ Some additional fields can be used for listing/filtering/showing/exporting data.
 
   - `rank`: computed field aimed to rank references in order of relevance ; this uses an algorithm similar to Google's PageRank while weighting references in function of their year of publication (giving more importance to recent references, which cannot have as much citations as older references anyway)
 
+
+## :clap:  Supporters
+
+[![Stargazers repo roster for @dhondta/zotero-cli](https://reporoster.com/stars/dark/dhondta/zotero-cli)](https://github.com/dhondta/zotero-cli/stargazers)
+
+[![Forkers repo roster for @dhondta/zotero-cli](https://reporoster.com/forks/dark/dhondta/zotero-cli)](https://github.com/dhondta/zotero-cli/network/members)
+
+<p align="center"><a href="#"><img src="https://img.shields.io/badge/Back%20to%20top--lightgrey?style=social" alt="Back to top" height="20"/></a></p>
