@@ -8,7 +8,7 @@ with open(join(currdir, 'README.md')) as f:
     long_descr = f.read()
 
 setup(
-  name = "zotero-cli",
+  name = "zotero-cli-tool",
   author = "Alexandre D\'Hondt",
   author_email = "alexandre.dhondt@gmail.com",
   url = "https://github.com/dhondta/zotero-cli",
