@@ -1,3 +1,4 @@
+<p align="center"><img src="https://github.com/dhondta/zotero-cli/raw/main/doc/logo.png"></p>
 <h1 align="center">Zotero CLI <a href="https://twitter.com/intent/tweet?text=Zotero%20CLI%20-%20A%20Tinyscript%20tool%20for%20sorting,%20ranking%20and%20exporting%20Zotero%20references%20based%20on%20pyzotero.%0D%0Ahttps%3a%2f%2fgithub%2ecom%2fdhondta%2fzotero-cli%0D%0A&hashtags=python,zotero,cli,pyzotero,pagerank"><img src="https://img.shields.io/badge/Tweet--lightgrey?logo=twitter&style=social" alt="Tweet" height="20"/></a></h1>
 <h3 align="center">Sort and rank your Zotero references easy from your CLI.</h3>
 
