@@ -7,6 +7,7 @@ import xlsxwriter
 from datetime import datetime
 from pyzotero import zotero
 from tinyscript import *
+from tinyscript.report import *
 
 
 __author__    = "Alexandre D'Hondt"
@@ -55,6 +56,7 @@ FIELD_ALIASES = {
     'what': "What ?",
     'zscc': "#Cited",
 }
+FLOAT_FIELDS = []
 INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "numCreators", "numEditors", "numNotes",
                   "numPages", "rank", "references", "year", "zscc"]
 NOTE_FIELDS = ["comments", "results", "what"]
@@ -458,7 +460,10 @@ class ZoteroCLI(object):
         # format the selected items as table data
         logger.debug("Sorting items based on %s..." % sort)
         for i in sorted(items.values(), key=lambda i: ZoteroCLI.sort(i['data'].get(sort, "-"), sort)):
-            data.append([self._format_value(i['data'].get(f), f) if i['data'].get(f) else "-" for f in fields])
+            row = [self._format_value(i['data'].get(f), f) if i['data'].get(f) else "-" for f in fields]
+            if all(x == "-" for x in row):
+                continue
+            data.append(row)
         if desc:
             data = data[::-1]
         return [ZoteroCLI.header(f) for f in fields], data
@@ -501,40 +506,56 @@ class ZoteroCLI(object):
         print(len(data))
     
     @ts.failsafe
-    def export(self, fields=None, filters=None, sort=None, desc=False, limit=None):
+    def export(self, fields=None, filters=None, sort=None, desc=False, limit=None, line_format=None,
+               output_format="xslx"):
         """ Export the selected fields of items while applying filters to an Excel file. """
         headers, data = self._items(fields, filters, sort, desc, limit)
-        c, r = string.ascii_uppercase[len(headers)-1], len(data) + 1
-        logger.debug("Creating Excel file...")
-        wb = xlsxwriter.Workbook("export.xlsx")
-        ws = wb.add_worksheet()
-        ws.add_table("A1:%s%d" % (c, r), {
-            'autofilter': 1,
-            'columns': [{'header': h} for h in headers],
-            'data': data,
-        })
-        # center header cells
-        cc = wb.add_format()
-        cc.set_align("center")
-        for i, h in enumerate(headers):
-            ws.write("%s1" % string.ascii_uppercase[i], h, cc)
-        # fix widths
-        max_w = []
-        wtxt = [False] * len(headers)
-        for i in range(len(headers)):
-            m = max(len(str(row[i])) for row in [headers] + data)
-            w = min(m, 80)
-            wtxt[i] = wtxt[i] or m > 80
-            max_w.append(w)
-            ws.set_column("{0}:{0}".format(string.ascii_uppercase[i]), w)
-        # wrap text where needed and fix heights
-        tw = wb.add_format()
-        tw.set_text_wrap()
-        for j, row in enumerate(data):
-            for i, v in enumerate(row):
-                if wtxt[i]:
-                    ws.write(string.ascii_uppercase[i] + str(j+2), v, tw)
-        wb.close()
+        if output_format == "xslx":
+            c, r = string.ascii_uppercase[len(headers)-1], len(data) + 1
+            logger.debug("Creating Excel file...")
+            wb = xlsxwriter.Workbook("export.xslx")
+            ws = wb.add_worksheet()
+            ws.add_table("A1:%s%d" % (c, r), {
+                'autofilter': 1,
+                'columns': [{'header': h} for h in headers],
+                'data': data,
+            })
+            # center header cells
+            cc = wb.add_format()
+            cc.set_align("center")
+            for i, h in enumerate(headers):
+                ws.write("%s1" % string.ascii_uppercase[i], h, cc)
+            # fix widths
+            max_w = []
+            wtxt = [False] * len(headers)
+            for i in range(len(headers)):
+                m = max(len(str(row[i])) for row in [headers] + data)
+                w = min(m, 80)
+                wtxt[i] = wtxt[i] or m > 80
+                max_w.append(w)
+                ws.set_column("{0}:{0}".format(string.ascii_uppercase[i]), w)
+            # wrap text where needed and fix heights
+            tw = wb.add_format()
+            tw.set_text_wrap()
+            for j, row in enumerate(data):
+                for i, v in enumerate(row):
+                    if wtxt[i]:
+                        ws.write(string.ascii_uppercase[i] + str(j+2), v, tw)
+            wb.close()
+            return
+        elif output_format in ["csv", "json", "xml", "xslx"] or line_format is None:
+            r = Report(Data([headers] + data))
+        else:
+            lines = []
+            for row in data:
+                d = {k.lower(): v for k, v in zip(headers, row)}
+                if "Title" in headers and "Url" in headers:
+                    d['link'] = d['title'] if d['url'] == "-" else "[%s](%s)" % (d['title'], d['url'])
+                lines.append(line_format.format(**d))
+            r = Report(List(*lines))
+        r.filename = "export"
+        logger.debug("Creating %s file..." % output_format.upper())
+        getattr(r, output_format)(False)
     
     @ts.failsafe
     def list(self, field, filters=None, desc=False, limit=None):
@@ -585,7 +606,7 @@ class ZoteroCLI(object):
             logger.error("Bad chart")
             raise ValueError
     
-    #@ts.failsafe
+    @ts.failsafe
     def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
         """ Show the selected fields of items while applying filters. """
         output_key = "key" in fields
@@ -656,7 +677,7 @@ class ZoteroCLI(object):
         field = field or ""
         if field.startswith("date") or field.endswith("Date"):
             return ZoteroCLI.date(value.lstrip("-"), "sort per %s" % field).timestamp()
-        elif re.match(r"-?\d+(\.\d+)?$", str(value)) and field not in ["issue", "volume"] or field in INTEGER_FIELDS:
+        elif field in FLOAT_FIELDS or field in INTEGER_FIELDS:
             try:
                 return float(-1 if value in ["", "-", None] else value)
             except:
@@ -701,8 +722,11 @@ if __name__ == '__main__':
     ccount = sparsers.add_parser("count", help="count items")
     _set_arg(ccount, "filter", "filter to be applied while counting")
     _set_arg(ccount, "query")
-    cexpt = sparsers.add_parser("export", help="export items to an Excel file")
+    cexpt = sparsers.add_parser("export", help="export items to a file")
     cexpt.add_argument("field", nargs="+", help="field to be shown")
+    cexpt.add_argument("-l", "--line-format", help="line's format string for outputting as a list")
+    cexpt.add_argument("-o", "--output-format", choices=["csv", "html", "json", "md", "pdf", "rst", "xml", "xslx"],
+                       default="xslx", help="output format")
     _set_args(cexpt, "filter", "limit", "query", "sort")
     clist = sparsers.add_parser("list", help="list distinct values for the given field")
     clist.add_argument("field", help="field whose distinct values are to be listed")
@@ -752,7 +776,7 @@ if __name__ == '__main__':
     if args.command == "count":
         z.count(args.filter)
     elif args.command == "export":
-        z.export(args.field, args.filter, args.sort, args.desc, args.limit)
+        z.export(args.field, args.filter, args.sort, args.desc, args.limit, args.line_format, args.output_format)
     elif args.command == "list":
         z.list(args.field, args.filter, args.desc, args.limit)
     elif args.command == "mark":
