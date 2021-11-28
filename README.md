@@ -5,8 +5,9 @@
 [![PyPi](https://img.shields.io/pypi/v/zotero-cli-tool.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
 ![Platform](https://img.shields.io/badge/platform-linux-yellow.svg)
 [![Read The Docs](https://readthedocs.org/projects/zotero-cli/badge/?version=latest)](http://zotero-cli.readthedocs.io/en/latest/?badge=latest)
-[![Known Vulnerabilities](https://snyk.io/test/github/dhondta/zotero-cli/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/dhondta/zotero-cli?targetFile=requirements.txt)
 [![Requirements Status](https://requires.io/github/dhondta/zotero-cli/requirements.svg?branch=main)](https://requires.io/github/dhondta/zotero-cli/requirements/?branch=main)
+[![Known Vulnerabilities](https://snyk.io/test/github/dhondta/zotero-cli/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/dhondta/zotero-cli?targetFile=requirements.txt)
+[![DOI](https://zenodo.org/badge/321932121.svg)](https://zenodo.org/badge/latestdoi/321932121)
 [![License](https://img.shields.io/pypi/l/zotero-cli-tool.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
 
 This [Tinyscript](https://github.com/dhondta/zotero-cli) tool relies on [`pyzotero`](https://github.com/urschrei/pyzotero) for communicating with [Zotero's Web API](https://www.zotero.org/support/dev/web_api/v3/start). It allows to list field values, show items in tables in the CLI or also export sorted items to an Excel file.
