@@ -7,6 +7,7 @@ import xlsxwriter
 from datetime import datetime
 from pyzotero import zotero
 from tinyscript import *
+from tinyscript.helpers.text import _indent
 from tinyscript.report import *
 
 
@@ -71,6 +72,20 @@ QUERIES = {
     'no-attachment':         {'filter': ["numAttachments:0"], 'fields': ["title"]},
     'top-10-most-relevants': {'limit': ">rank:10", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
     'top-50-most-relevants': {'limit': ">rank:50", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
+}
+TYPE_EMOJIS = {
+    'blog post':         ":pushpin:",
+    'book':              ":book:",
+    'computer program':  ":floppy_disk:",
+    'conference paper':  ":notebook:",
+    'default':           ":question:",
+    'document':          ":page_facing_up:",
+    'journal article':   ":page_with_curl:",
+    'manuscript':        ":scroll:",
+    'newspaper article': ":newspaper:",
+    'presentation':      ":bar_chart:",
+    'thesis':            ":mortar_board:",
+    'webpage':           ":earth_americas:",
 }
 
 get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.get('firstName', "")).strip()
@@ -543,14 +558,19 @@ class ZoteroCLI(object):
                         ws.write(string.ascii_uppercase[i] + str(j+2), v, tw)
             wb.close()
             return
-        elif output_format in ["csv", "json", "xml", "xslx"] or line_format is None:
-            r = Report(Data([headers] + data))
+        elif output_format in ["csv", "json", "xml"] or line_format is None:
+            r = Report(Table([headers] + data))
         else:
             lines = []
             for row in data:
                 d = {k.lower(): v for k, v in zip(headers, row)}
                 if "Title" in headers and "Url" in headers:
                     d['link'] = d['title'] if d['url'] == "-" else "[%s](%s)" % (d['title'], d['url'])
+                if "link" in d.keys() and "AbstractNote" in headers:
+                    d['link_with_abstract'] = d['link'] if d['abstractnote'] == "-" else \
+                                              "%s\n\n%s\n\n" % (d['link'], _indent(d['abstractnote'], 2))
+                if "Type" in headers:
+                    d['emoji'] = TYPE_EMOJIS.get(d['type'], TYPE_EMOJIS['default'])
                 lines.append(line_format.format(**d))
             r = Report(List(*lines))
         r.filename = "export"
@@ -683,6 +703,11 @@ class ZoteroCLI(object):
             except:
                 logger.warning("Bad value '%s' for field %s" % (value, field))
                 return -1
+        elif field == "title":
+            s = str(value).lower()
+            if len(s) > 0 and s.split(maxsplit=1)[0] in ["a", "an", "the"]:
+                s = s.split(maxsplit=1)[-1]
+            return s
         else:
             return str(value).lower()
 
