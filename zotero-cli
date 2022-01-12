@@ -13,7 +13,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.2.5"
+__version__   = "1.2.6"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -163,7 +163,7 @@ class ZoteroCLI(object):
                 if f not in self._valid_fields:
                     self._valid_fields.append(f)
         # also append computed fields to the list of valid fields
-        for f in ["authors", "editors", "selected"] + INTEGER_FIELDS + NOTE_FIELDS:
+        for f in ["abstractShortNote", "authors", "editors", "selected"] + INTEGER_FIELDS + NOTE_FIELDS:
             if f not in self._valid_fields:
                 self._valid_fields.append(f)
     
@@ -257,6 +257,8 @@ class ZoteroCLI(object):
             # compute non-existing fields if required
             if "authors" in afields:
                 d['authors'] = [c for c in i['data']['creators'] if c['creatorType'] == "author"]
+            if "abstractShortNote" in afields:
+                d['abstractShortNote'] = i['data']['abstractNote'].split(".", 1)[0].strip() + "."
             if "citations" in afields or "references" in afields:
                 c, r = 0, 0
                 try:
@@ -566,9 +568,13 @@ class ZoteroCLI(object):
                 d = {k.lower(): v for k, v in zip(headers, row)}
                 if "Title" in headers and "Url" in headers:
                     d['link'] = d['title'] if d['url'] == "-" else "[%s](%s)" % (d['title'], d['url'])
-                if "link" in d.keys() and "AbstractNote" in headers:
-                    d['link_with_abstract'] = d['link'] if d['abstractnote'] == "-" else \
-                                              "%s\n\n%s\n\n" % (d['link'], _indent(d['abstractnote'], 2))
+                if "link" in d.keys():
+                    if "AbstractNote" in headers:
+                        d['link_with_abstract'] = d['link'] if d['abstractnote'] == "-" else \
+                                                  "%s\n\n%s\n\n" % (d['link'], _indent(d['abstractnote'], 2))
+                    elif "AbstractShortNote" in headers:
+                        d['link_with_abstract'] = d['link'] if d['abstractshortnote'] == "." else \
+                                                  "%s - %s" % (d['link'], d['abstractshortnote'])
                 if "Type" in headers:
                     d['emoji'] = TYPE_EMOJIS.get(d['type'], TYPE_EMOJIS['default'])
                 lines.append(line_format.format(**d))
