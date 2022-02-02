@@ -98,6 +98,7 @@ $ zotero-cli show year title numPages itemType --limit ">rank:50"
 
 Available queries:
 - `no-attachment`: list of all items with no attachment ; displayed fields: `title`
+- `no-url`: list of all items with no URL ; displayed fields: `year`, `title`
 - `top-10-most-relevants`: top-10 best ranked items ; displayed fields: `year`, `title`, `numPages`, `itemType`
 - `top-50-most-relevants`: same as top-10 but with the top-50
 

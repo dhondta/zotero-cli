@@ -218,6 +218,7 @@ The following queries are currently implemented:
 - `top-10-most-relevants`: returns the top-10 most relevant references, setting the `rank` field for ranking items according to a PageRank-like algorithm ; the displayed fields are `Year`, `Title`, `#Pages` and `Type`.
 - `top-50-most-relevants`: identical to the previous query, but with the top-50.
 - `no-attachment`: returns the list of items with no attachment ; useful for identifying references for which the related document was not attached yet, this only displays the `Title`.
+- `no-url`: returns the list of items with no URL ; useful for identifying references that have no hyperlink yet, this only displays the `Year` and `Title`, sorted by `Year`.
 
 ## Mark items
 

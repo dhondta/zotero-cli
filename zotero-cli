@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import json
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import operator
@@ -13,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.2.6"
+__version__   = "1.2.7"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -70,9 +69,11 @@ MARKERS = [("read", "unread", "this will display the entry as normal instead of 
            ("ignore", "unignore", "this will totally ignore the entry while getting the filtered items")]
 QUERIES = {
     'no-attachment':         {'filter': ["numAttachments:0"], 'fields': ["title"]},
+    'no-url':                {'filter': ["url:<empty>"], 'sort': "year", 'fields': ["year", "title"]},
     'top-10-most-relevants': {'limit': ">rank:10", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
     'top-50-most-relevants': {'limit': ">rank:50", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
 }
+STATIC_WORDS = ["Android", "Bochs", "Linux", "Markov", "NsPack", "Windows"]
 TYPE_EMOJIS = {
     'blog post':         ":pushpin:",
     'book':              ":book:",
@@ -202,6 +203,10 @@ class ZoteroCLI(object):
                         m = re.match(r"^(<|>|<=|>=|==)([^=]*)$", regex)
                         op, v = m.group(1), m.group(2).strip()
                     filt = (not_, OPERATORS[op], lambda i, f: ZoteroCLI.date(i['data'][f], i), ZoteroCLI.date(v))
+                elif field == "rank":
+                    m = re.match(r"^(<|>|<=|>=|==)(\d+|\d*\.\d+)$", regex)
+                    op, v = m.group(1), m.group(2).strip()
+                    filt = (not_, OPERATORS[op], lambda i, f: self.ranks.get(i['key'], 0), float(v))
                 # filter format: (negate, lambda, lambda's second arg)
                 elif field == "tags":
                     if regex not in self._valid_tags and regex not in ["-", "<empty>"]:
@@ -214,11 +219,8 @@ class ZoteroCLI(object):
                                                   [x['tag'] for x in i['data']['tags']]), regex)
                 # filter format: (negate, lambda) ; lambda's second arg is the field name 
                 elif regex in ["-", "<empty>"]:
-                    filt = (not_, lambda i, f: i['data'].get(f) == "")
-                elif field == "rank":
-                    m = re.match(r"^(<|>|<=|>=|==)(\d+|\d*\.\d+)$", regex)
-                    op, v = m.group(1), m.group(2).strip()
-                    filt = (not_, OPERATORS[op], lambda i, f: self.ranks.get(i['key'], 0), float(v))
+                    filt = (not_, lambda i, f: i['data'].get(f) == 1900) if field == "year" else \
+                           (not_, lambda i, f: i['data'].get(f) == "")
                 else:
                     filt = (not_, re.compile(regex, re.I), lambda i, f: i['data'].get(f) or "")
                 _filters.setdefault(field, [])
@@ -258,7 +260,7 @@ class ZoteroCLI(object):
             if "authors" in afields:
                 d['authors'] = [c for c in i['data']['creators'] if c['creatorType'] == "author"]
             if "abstractShortNote" in afields:
-                d['abstractShortNote'] = i['data']['abstractNote'].split(".", 1)[0].strip() + "."
+                d['abstractShortNote'] = re.split(r"\.(\s|$)", i['data']['abstractNote'])[0].strip() + "."
             if "citations" in afields or "references" in afields:
                 c, r = 0, 0
                 try:
@@ -368,12 +370,11 @@ class ZoteroCLI(object):
         data = []
         age = True
         # extract the limit field
-        lfield = None
+        lfield, lfdesc = sort, desc
         if limit is not None:
             try:
                 lfield, limit = limit.split(":")
                 lfield = lfield.strip()
-                lfdesc = False
                 # handle [<>] as sort orders
                 if lfield[0] in "<>":
                     lfdesc = lfield[0] == ">"
@@ -397,7 +398,7 @@ class ZoteroCLI(object):
             for f in ["rank", "citations", "references", "year", "zscc"]:
                 if f not in ffields:
                     ffields.append(f)
-        if limit is not None:
+        if lfield not in ffields:
             ffields.append(lfield)
         items = {i['key']: i for i in \
                  self._filter(ffields, [f for f in filters if not re.match(r"\~?rank\:", f)], force)}
@@ -448,6 +449,9 @@ class ZoteroCLI(object):
                     logger.debug("Ranking algorithm converged after %d iterations" % n)
                     break
                 prev = tuple(self.ranks.values())
+            # finally, we normalize ranks
+            max_rank = max(self.ranks.values())
+            self.ranks = {k: v / max_rank for k, v in self.ranks.items()}
             items = {i['key']: i for i in self._filter(ffields, filters, force)}
             for k, i in items.items():
                 i['data']['rank'] = self.ranks.get(k)
@@ -468,7 +472,7 @@ class ZoteroCLI(object):
             if lfdesc:
                 select_items = select_items[::-1]
             logger.debug("Limiting to %d items (sorted based on %s in %s order)..." % \
-                         (limit, lfield, ["ascending", "descending"][lfdesc]))
+                         (limit, lfield or sort, ["ascending", "descending"][lfdesc]))
             items = {i['key']: i for i in select_items[:limit]}
         # ensure that the rank field is set for every item
         if "rank" in ffields:
@@ -478,7 +482,7 @@ class ZoteroCLI(object):
         logger.debug("Sorting items based on %s..." % sort)
         for i in sorted(items.values(), key=lambda i: ZoteroCLI.sort(i['data'].get(sort, "-"), sort)):
             row = [self._format_value(i['data'].get(f), f) if i['data'].get(f) else "-" for f in fields]
-            if all(x == "-" for x in row):
+            if all(x in ".-" for x in row[1:]):  # row[0] is the item's key and shall never be "." or "-"
                 continue
             data.append(row)
         if desc:
@@ -516,16 +520,16 @@ class ZoteroCLI(object):
             logger.debug("Saving marks to cache '%s'..." % self._marks_file)
             json.dump(self.marks, f)
     
-    @ts.failsafe
     def count(self, filters=None):
         """ Count items while applying filters. """
         _, data = self._items(["title"], filters or [])
         print(len(data))
     
-    @ts.failsafe
     def export(self, fields=None, filters=None, sort=None, desc=False, limit=None, line_format=None,
                output_format="xslx"):
         """ Export the selected fields of items while applying filters to an Excel file. """
+        if "{stars}" in line_format and "rank" not in fields:
+            fields.append("rank")
         headers, data = self._items(fields, filters, sort, desc, limit)
         if output_format == "xslx":
             c, r = string.ascii_uppercase[len(headers)-1], len(data) + 1
@@ -567,23 +571,26 @@ class ZoteroCLI(object):
             for row in data:
                 d = {k.lower(): v for k, v in zip(headers, row)}
                 if "Title" in headers and "Url" in headers:
-                    d['link'] = d['title'] if d['url'] == "-" else "[%s](%s)" % (d['title'], d['url'])
-                if "link" in d.keys():
+                    d['lower_title'] = t = _lower_title(d['title'])
+                    d['link'] = d['title'] if d['url'] in ["", "-"] else "[%s](%s)" % (d['title'], d['url'])
+                    d['link_lower'] = t if d['url'] in ["", "-"] else "[%s](%s)" % (t, d['url'])
+                if "link" in d.keys() and "link_with_abstract" in line_format:
                     if "AbstractNote" in headers:
                         d['link_with_abstract'] = d['link'] if d['abstractnote'] == "-" else \
                                                   "%s\n\n%s\n\n" % (d['link'], _indent(d['abstractnote'], 2))
                     elif "AbstractShortNote" in headers:
                         d['link_with_abstract'] = d['link'] if d['abstractshortnote'] == "." else \
                                                   "%s - %s" % (d['link'], d['abstractshortnote'])
-                if "Type" in headers:
+                if "{emoji}" in line_format:
                     d['emoji'] = TYPE_EMOJIS.get(d['type'], TYPE_EMOJIS['default'])
+                if "{stars}" in line_format:
+                    d['stars'] = (round(float(d['rank']) * 4 + .5) - 1) * " :star:"
                 lines.append(line_format.format(**d))
             r = Report(List(*lines))
         r.filename = "export"
         logger.debug("Creating %s file..." % output_format.upper())
         getattr(r, output_format)(False)
     
-    @ts.failsafe
     def list(self, field, filters=None, desc=False, limit=None):
         """ List field's values while applying filters. """
         if field == "collections":
@@ -611,12 +618,10 @@ class ZoteroCLI(object):
             data = data[:limit]
         print(ts.BorderlessTable([[ZoteroCLI.header(field)]] + data))
     
-    @ts.failsafe
     def mark(self, marker, filters=None, sort=None, desc=False, limit=None):
         """ Mark the selected items as read/unread. """
         self._marks(marker, filters, sort, desc, limit)
     
-    @ts.failsafe
     def plot(self, name, filters=None):
         """ Plot a chart given its slug. """
         if name == "software-in-time":
@@ -632,26 +637,27 @@ class ZoteroCLI(object):
             logger.error("Bad chart")
             raise ValueError
     
-    @ts.failsafe
     def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
         """ Show the selected fields of items while applying filters. """
+        # ensure the 'key' field is included for filtering the items ; then do not keep it if not selected
         output_key = "key" in fields
         if not output_key:
             fields = ["key"] + fields
         headers, data = self._items(fields, filters, sort, desc, limit)
-        data_formatted = []
-        for row in data:
-            k = row[fields.index("key")]
-            row = [ts.txt2italic(v) if h == "Title" else v for h, v in zip(headers, row)]
-            if k not in self.marks.get('read', []):
-                row = [ts.txt2bold(v) for v in row]
-            data_formatted.append(row[int(not output_key):])
+        keys, data = [row[fields.index("key")] for row in data], [row[int(not output_key):] for row in data]
         if not output_key:
             headers = headers[1:]
         if len(headers) > 0:
-            print(ts.BorderlessTable([headers] + data_formatted))
+            table = ts.BorderlessTable([headers] + data)
+            t_idx = headers.index("Title")
+            for key, row in zip(keys, table.table_data[2:]):
+                if t_idx > 0:
+                    row[t_idx] = "\n".join(ts.txt2italic(l) if len(l) > 0 else "" for l in row[t_idx].split("\n"))
+                if key not in self.marks.get('read', []):
+                    for i, v in enumerate(row):
+                        row[i] = "\n".join(ts.txt2bold(l) if len(l) > 0 else "" for l in v.split("\n"))
+            print(table)
     
-    @ts.failsafe
     def view(self, name, value, fields=None):
         """ View a single item given a field and its value. """
         headers, data = self._items(fields, ["%s:%s" % (name, value)])
@@ -716,6 +722,23 @@ class ZoteroCLI(object):
             return s
         else:
             return str(value).lower()
+
+
+def _lower_title(title):
+    g = lambda p, n=1: p.group(n)
+    for i in range(2):
+        # this regex allows to preserve cased subtitles such as: "First Part: Second Part" => "First part: Second part"
+        title = re.sub(r"([^-:!?]\s+(?:[A-Z][a-z]+(?:[-_]?[A-Z]?[a-z]+)*|[A-Z]{2}[a-z]{3,}))", \
+                       lambda p: g(p) if g(p)[1:].strip() in STATIC_WORDS else g(p)[0] + g(p)[1:].lower(), title)
+        # it requires applying twice the transformation as the first one only catches 1 instance out of 2 ;
+        #  "An Example Title: With a Subtitle"
+        #    ^^^^^^^^^      ^^^^^^ ^^^^^^^^^^
+        #                ^
+        #        this one is not matched the first time as the last "e" of "Example" was already consumed !
+    # this one corrects bad case for substrings after a punctuation among -:!?
+    title = re.sub(r"([-:!?]\s+)([a-z]+(?:[-_][A-Z]?[a-z]+)*)", lambda p: g(p) + g(p,2)[0].upper() + g(p,2)[1:], title)
+    # the last one ensures that the very first word has its first letter uppercased
+    return re.sub(r"^([A-Z][a-z]+(?:[-_][A-Z]?[a-z]+)*)", lambda p: g(p)[0] + g(p)[1:].lower(), title)
 
 
 def _set_arg(subparser, arg, msg=None):
