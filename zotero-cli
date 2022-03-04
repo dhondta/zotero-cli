@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.2.7"
+__version__   = "1.2.9"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -368,7 +368,19 @@ class ZoteroCLI(object):
         filters = filters or []
         sort = sort or fields[0]
         data = []
-        age = True
+        age, order = True, 3
+        for f in fields:
+            m = re.match(r"rank(\*|\^[1-9])$", f)
+            if m:
+                break
+        if m:
+            f = m.group()
+            if m.group(1) == "*":
+                age = False
+            else:
+                order = int(m.group(1).lstrip("^"))
+            fields.insert(fields.index(f), "rank")
+            fields.remove(f)
         # extract the limit field
         lfield, lfdesc = sort, desc
         if limit is not None:
@@ -413,10 +425,11 @@ class ZoteroCLI(object):
             y = set(i['data']['year'] for i in items.values()) - {1900}
             # min/max years are computed to take item's age into account
             y_min, y_max = min(y), max(y)
+            # in order not to get a null damping factor for items with minimum year, we shift y_min by 10% to the left
+            y_min -= max(1, (y_max - y_min) // 10)
             dy = float(y_max - y_min)
-            # in order not to get a null damping factor for items with minimum year, we shift y_min
-            y_min -= max(1., dy // 10)
-            dy = float(y_max - y_min)
+            # set the damping factor formula relying on the previously defined order (default is order 3)
+            df_func = lambda y: (float(y-y_min)/dy)**order
             # now we can iterate
             prev = tuple(self.ranks.values())
             for n in range(len(self.ranks)):
@@ -427,10 +440,8 @@ class ZoteroCLI(object):
                         links = [links]
                     if items[k1]['data']['year'] == 1900:
                         continue
-                    # compute the damping factor
-                    d1 = float(items[k1]['data']['year'] - y_min) / dy
                     # now compute the iterated rank
-                    self.ranks[k1] = d1
+                    self.ranks[k1] = df_func(items[k1]['data']['year'])
                     for link in links:
                         k2 = link.split("/")[-1]
                         if k2 not in items.keys():
@@ -442,7 +453,7 @@ class ZoteroCLI(object):
                                 r = k2_d['references']
                                 if r > 0:
                                     # consider a damping factor on a per-item basis, taking age into account
-                                    df = float(k2_d['year'] - y_min) / dy if age else 1.
+                                    df = df_func(k2_d['year']) if age else 1.
                                     self.ranks[k1] += df * self.ranks.get(k2, 0.) / r
                 # check for convergence
                 if tuple(self.ranks.values()) == prev:
@@ -482,7 +493,7 @@ class ZoteroCLI(object):
         logger.debug("Sorting items based on %s..." % sort)
         for i in sorted(items.values(), key=lambda i: ZoteroCLI.sort(i['data'].get(sort, "-"), sort)):
             row = [self._format_value(i['data'].get(f), f) if i['data'].get(f) else "-" for f in fields]
-            if all(x in ".-" for x in row[1:]):  # row[0] is the item's key and shall never be "." or "-"
+            if len(row) > 1 and all(x in ".-" for x in row[1:]):  # row[0] is the item's key ; shall never be "." or "-"
                 continue
             data.append(row)
         if desc:
@@ -584,7 +595,7 @@ class ZoteroCLI(object):
                 if "{emoji}" in line_format:
                     d['emoji'] = TYPE_EMOJIS.get(d['type'], TYPE_EMOJIS['default'])
                 if "{stars}" in line_format:
-                    d['stars'] = (round(float(d['rank']) * 4 + .5) - 1) * " :star:"
+                    d['stars'] = (round(float(d['rank']) * 4) - 1) * " :star:"
                 lines.append(line_format.format(**d))
             r = Report(List(*lines))
         r.filename = "export"
