@@ -12,7 +12,7 @@ setup(
   author = "Alexandre D\'Hondt",
   author_email = "alexandre.dhondt@gmail.com",
   url = "https://github.com/dhondta/zotero-cli",
-  version = "1.2.9",
+  version = "1.3.0",
   license = "GPLv3",
   description = "Tinyscript tool for sorting and exporting Zotero references based on pyzotero",
   long_description=long_descr,
@@ -33,6 +33,6 @@ setup(
     'Programming Language :: Python :: 3.8',
     'Programming Language :: Python :: 3.9',
   ],
-  install_requires=["matplotlib", "pyzotero", "tinyscript>=1.24.10", "xlsxwriter"],
+  install_requires=["matplotlib", "pyzotero", "tinyscript>=1.25.0", "xlsxwriter"],
   python_requires = '>=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,<4',
 )

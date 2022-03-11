@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.2.9"
+__version__   = "1.3.0"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -39,10 +39,9 @@ CACHE_FILES = {
     'marks':       "marks.json",
     'notes':       "notes.json",
 }
-CACHE_PATH = ts.Path("~/.zotero/cache", create=True, expand=True)
-CREDS_FILE = ts.CredentialsPath("~/.zotero")
+CACHE_PATH = ts.Path("~/.cache/zotero-cli", create=True, expand=True)
+CREDS_FILE = ts.CredentialsPath(str(CACHE_PATH))
 
-FILTERED_TYPES = ["computerProgram", "document", "webpage"]
 OPERATORS = {
     '==': operator.eq,
     '<':  operator.lt,
@@ -88,8 +87,6 @@ TYPE_EMOJIS = {
     'thesis':            ":mortar_board:",
     'webpage':           ":earth_americas:",
 }
-
-get_name = lambda x: x.get('name') or "{} {}".format(x.get('lastName', ""), x.get('firstName', "")).strip()
 
 
 class ZoteroCLI(object):
@@ -164,7 +161,7 @@ class ZoteroCLI(object):
                 if f not in self._valid_fields:
                     self._valid_fields.append(f)
         # also append computed fields to the list of valid fields
-        for f in ["abstractShortNote", "authors", "editors", "selected"] + INTEGER_FIELDS + NOTE_FIELDS:
+        for f in ["abstractShortNote", "attachments", "authors", "editors", "selected"] + INTEGER_FIELDS + NOTE_FIELDS:
             if f not in self._valid_fields:
                 self._valid_fields.append(f)
     
@@ -257,10 +254,12 @@ class ZoteroCLI(object):
                     else:
                         d[field] = self._format_value(value, field)
             # compute non-existing fields if required
-            if "authors" in afields:
-                d['authors'] = [c for c in i['data']['creators'] if c['creatorType'] == "author"]
             if "abstractShortNote" in afields:
                 d['abstractShortNote'] = re.split(r"\.(\s|$)", i['data']['abstractNote'])[0].strip() + "."
+            if "attachments" in afields:
+                d['attachments'] = [x['data']['title'] for x in self.attachments if x['data']['parentItem'] == i['key']]
+            if "authors" in afields:
+                d['authors'] = [c for c in i['data']['creators'] if c['creatorType'] == "author"]
             if "citations" in afields or "references" in afields:
                 c, r = 0, 0
                 try:
@@ -347,28 +346,31 @@ class ZoteroCLI(object):
     
     def _format_value(self, value, field=""):
         """ Ensure the given value is a string. """
+        v = value
         if field == "tags":
-            return value if ts.is_str(value) else ";".join(x['tag'] for x in value)
+            return v if ts.is_str(v) else ";".join(x['tag'] for x in v)
         elif field == "itemType":
-            return re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', re.sub(r'(.)([A-Z][a-z]+)', r'\1 \2', value)).lower()
+            return re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', re.sub(r'(.)([A-Z][a-z]+)', r'\1 \2', v)).lower()
         elif field == "rank":
-            return "%.3f" % float(value or "0")
+            return "%.3f" % float(v or "0")
         elif field == "year":
-            return [str(value), "-"][value == 1900]
-        elif ts.is_int(value):
-            return [str(value), "-"][value < 0]
-        elif ts.is_list(value):
-            return ", ".join(self._format_value(x, field) for x in value)
-        elif ts.is_dict(value):
-            return str(get_name(value) or value)
-        return str(value)
+            return [str(v), "-"][v == 1900]
+        elif ts.is_int(v):
+            return [str(v), "-"][v < 0]
+        elif ts.is_list(v):
+            return [", ", ";"][field == "attachments"].join(self._format_value(x, field) for x in v)
+        elif ts.is_dict(v):
+            if field in ["authors", "creators", "editors"]:
+                v = v.get('name') or "{} {}".format(v.get('lastName', ""), v.get('firstName', "")).strip()
+        return str(v)
     
     def _items(self, fields=None, filters=None, sort=None, desc=False, limit=None, force=False):
-        """ Get items, computing speciel fields and applying filters. """
+        """ Get items, computing special fields and applying filters. """
         filters = filters or []
         sort = sort or fields[0]
         data = []
         age, order = True, 3
+        # define the order of the damping factor function to be applied to the rank field
         for f in fields:
             m = re.match(r"rank(\*|\^[1-9])$", f)
             if m:
@@ -606,23 +608,23 @@ class ZoteroCLI(object):
         """ List field's values while applying filters. """
         if field == "collections":
             l = [c['data']['name'] for c in self.collections]
+            logger.warning("Filters are not applicable to field: collections")
         elif field == "fields":
             l = self._valid_fields
-        elif field == "tags":
-            l = self._valid_tags
-        elif field == "attachments":
-            l = [a['data']['title'] for a in self.attachments]
-        elif field in ["authors", "creators", "editors"]:
-            if field == "creators":
-                l = [get_name(c) for i in self.items for c in i['data']['creators']]
-            else:
-                l = [get_name(c) for i in self.items for c in i['data']['creators'] if c['creatorType'] == field[:-1]]
+            logger.warning("Filters are not applicable to field: fields")
         else:
             l = [row[0] for row in self._items([field], filters)[1]]
         if len(l) == 0:
-            logger.info("No data")
             return
-        data = [[x] for x in sorted(set(l), key=lambda x: ZoteroCLI.sort(x, field))]
+        if field in ["attachments", "tags"]:
+            tmp, l = l[:], []
+            for x in tmp:
+                l.extend(x.split(";"))
+        elif field in ["authors", "creators", "editors"]:
+            tmp, l = l[:], []
+            for x in tmp:
+                l.extend(x.split(", "))
+        data = [[x] for x in sorted(set(l), key=lambda x: ZoteroCLI.sort(x, field)) if x != "-"]
         if desc:
             data = data[::-1]
         if limit is not None:
@@ -775,8 +777,8 @@ if __name__ == '__main__':
     # main parser
     parser.add_argument("-g", "--group", action="store_true", help="API identifier is a group",
                         note="the default API identifier type is 'user' ; use this option if you modified your library "
-                             "to be shared with a group of users, this can be set permanently by touching "
-                             "~/.zotero/group")
+                             "to be shared with a group of users, this can be set permanently by touching %s" % 
+                             CACHE_PATH.joinpath("group"))
     parser.add_argument("-i", "--id", help="API identifier",
                         note="if 'id' and 'key' not specified, credentials are obtained from file '%s'" % CREDS_FILE)
     parser.add_argument("-k", "--key", help="API key",
@@ -837,7 +839,7 @@ if __name__ == '__main__':
                 os.remove(str(CACHE_PATH.joinpath(fn)))
             except OSError:
                 pass
-    z = ZoteroCLI(args.id, ["user", "group"][args.group or ts.Path("~/.zotero/group", expand=True).exists()], args.key)
+    z = ZoteroCLI(args.id, ["user", "group"][args.group or CACHE_PATH.joinpath("group").exists()], args.key)
     if args.command == "count":
         z.count(args.filter)
     elif args.command == "export":
