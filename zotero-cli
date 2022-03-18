@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import operator
 import xlsxwriter
 from datetime import datetime
-from pyzotero import zotero
+from pyzotero import zotero, zotero_errors
 from tinyscript import *
 from tinyscript.helpers.text import _indent
 from tinyscript.report import *
@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.3.1"
+__version__   = "1.4.0"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -39,8 +39,9 @@ CACHE_FILES = {
     'marks':       "marks.json",
     'notes':       "notes.json",
 }
-CACHE_PATH = ts.Path("~/.cache/zotero-cli", create=True, expand=True)
-CREDS_FILE = ts.CredentialsPath(str(CACHE_PATH))
+CACHE_PATH = ts.Path("~/.zotero/cache", create=True, expand=True)
+CREDS_FILE = ts.CredentialsPath("~/.zotero")
+GROUP_FILE = ts.Path("~/.zotero/group", expand=True)
 
 OPERATORS = {
     '==': operator.eq,
@@ -69,8 +70,10 @@ MARKERS = [("read", "unread", "this will display the entry as normal instead of 
 QUERIES = {
     'no-attachment':         {'filter': ["numAttachments:0"], 'fields': ["title"]},
     'no-url':                {'filter': ["url:<empty>"], 'sort': "year", 'fields': ["year", "title"]},
-    'top-10-most-relevants': {'limit': ">rank:10", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
-    'top-50-most-relevants': {'limit': ">rank:50", 'sort': "year", 'fields': ["year", "title", "numPages", "itemType"]},
+    'top-10-most-relevants': {'limit': ">rank:10", 'sort': ">date",
+                              'fields': ["year", "title", "numPages", "itemType"]},
+    'top-50-most-relevants': {'limit': ">rank:50", 'sort': ">date",
+                              'fields': ["year", "title", "numPages", "itemType"]},
 }
 STATIC_WORDS = ["Android", "Bochs", "Linux", "Markov", "NsPack", "Windows"]
 TYPE_EMOJIS = {
@@ -109,7 +112,12 @@ class ZoteroCLI(object):
                 self.__zot = self.__zot or zotero.Zotero(CREDS_FILE.id, api_id_type, CREDS_FILE.secret)
                 logger.debug("Getting %s from zotero.org..." % k)
                 if k == "collections":
-                    self.collections = list(self.__zot.collections())
+                    try:
+                        self.collections = list(self.__zot.collections())
+                    except zotero_errors.ResourceNotFound:
+                        logger.error("Nothing found for ID %s" % CREDS_FILE.id)
+                        logger.warning("Beware to use the --group option if this is the ID of a group")
+                        return
                 elif k == "items":
                     self.items = list(self.__zot.everything(self.__zot.top()))
                 elif k in ["attachments", "notes"]:
@@ -423,17 +431,9 @@ class ZoteroCLI(object):
             logger.debug("Computing ranks...")
             # principle: items with a valid date get a weight, others (with year==1900) do not
             self.ranks = {k: 1./len(items) if i['data']['year'] > 1900 else 0. for k, i in items.items()}
-            y = set(i['data']['year'] for i in items.values()) - {1900}
-            # min/max years are computed to take item's age into account
-            y_min, y_max = min(y), max(y)
-            # in order not to get a null damping factor for items with minimum year, we shift y_min by 10% to the left
-            y_min -= max(1, (y_max - y_min) // 10)
-            dy = float(y_max - y_min)
-            # set the damping factor formula relying on the previously defined order (default is order 3)
-            df_func = lambda y: (float(y-y_min)/dy)**order
             # now we can iterate
             prev = tuple(self.ranks.values())
-            for n in range(len(self.ranks)):
+            for n in range(len(self.ranks)):  # at most N iterations are required (N being the number of keys)
                 for k1 in self.ranks.keys():
                     k1_d = self.__objects[k1]['data']
                     links = k1_d['relations'].get('dc:relation', [])
@@ -442,7 +442,7 @@ class ZoteroCLI(object):
                     if items[k1]['data']['year'] == 1900:
                         continue
                     # now compute the iterated rank
-                    self.ranks[k1] = df_func(items[k1]['data']['year'])
+                    self.ranks[k1] = float(len([None for l in links if l.split("/")[-1] in items.keys()]) > 0)
                     for link in links:
                         k2 = link.split("/")[-1]
                         if k2 not in items.keys():
@@ -454,16 +454,31 @@ class ZoteroCLI(object):
                                 r = k2_d['references']
                                 if r > 0:
                                     # consider a damping factor on a per-item basis, taking age into account
-                                    df = df_func(k2_d['year']) if age else 1.
-                                    self.ranks[k1] += df * self.ranks.get(k2, 0.) / r
+                                    self.ranks[k1] += self.ranks.get(k2, 0.) / r
                 # check for convergence
                 if tuple(self.ranks.values()) == prev:
                     logger.debug("Ranking algorithm converged after %d iterations" % n)
                     break
                 prev = tuple(self.ranks.values())
+            # apply the damping factor at the very end
+            if age:
+                dt_zero = ZoteroCLI.date("").timestamp()
+                dt = set(ZoteroCLI.date(i['data']['date']).timestamp() for i in items.values()) - {dt_zero}
+                # min/max years are computed to take item's age into account
+                dt_min, dt_max = min(dt), max(dt)
+                # in order not to get a null damping factor for items with minimum year, we shift y_min by 10% to the left
+                dt_min -= max(1, (dt_max - dt_min) // 10)
+                ddt = float(dt_max - dt_min)
+                # set the damping factor formula relying on the previously defined order (default is order 3)
+                df_func = lambda dt: (float(ZoteroCLI.date(dt).timestamp()-dt_min)/ddt)**order
+                self.ranks = {k: df_func(items[k]['data']['date']) * v for k, v in self.ranks.items()}
             # finally, we normalize ranks
             max_rank = max(self.ranks.values())
-            self.ranks = {k: v / max_rank for k, v in self.ranks.items()}
+            self.ranks = {k: v / max_rank if max_rank else 0. for k, v in self.ranks.items()}
+            for k, r in sorted(self.ranks.items(), key=lambda x: -x[1]):
+                k_d = items[k]['data']
+                logger.debug("%.05f - %s (%s)" % (r, k_d['title'], k_d['date']))
+            # reapply filters, including for fields that were just computed
             items = {i['key']: i for i in self._filter(ffields, filters, force)}
             for k, i in items.items():
                 i['data']['rank'] = self.ranks.get(k)
@@ -581,6 +596,12 @@ class ZoteroCLI(object):
         elif output_format in ["csv", "json", "xml"] or line_format is None:
             r = Report(Table([headers] + data))
         else:
+            if "{stars}" in line_format:
+                # determine highest rank
+                mr, i_rank = 0., [h.lower() for h in headers].index("rank")
+                for row in data:
+                    r = row[i_rank]
+                    mr = max(mr, float(r if r != "-" else 0))
             lines = []
             for row in data:
                 d = {k.lower(): v for k, v in zip(headers, row)}
@@ -598,7 +619,9 @@ class ZoteroCLI(object):
                 if "{emoji}" in line_format:
                     d['emoji'] = TYPE_EMOJIS.get(d['type'], TYPE_EMOJIS['default'])
                 if "{stars}" in line_format:
-                    d['stars'] = (round(float(d['rank']) * 4) - 1) * " :star:"
+                    r = float(d['rank']) if d['rank'] != "-" else 0.
+                    s = " :star2:" if r == mr else " :star:"
+                    d['stars'] = "" if r < .5 else s if .5 <= r < .7 else 2*s if .7 <= r < .85 else 3*s
                 lines.append(line_format.format(**d))
             r = Report(List(*lines))
         r.filename = "export"
@@ -784,9 +807,9 @@ if __name__ == '__main__':
     parser.add_argument("-g", "--group", action="store_true", help="API identifier is a group",
                         note="the default API identifier type is 'user' ; use this option if you modified your library "
                              "to be shared with a group of users, this can be set permanently by touching %s" % 
-                             CACHE_PATH.joinpath("group"))
+                             GROUP_FILE)
     parser.add_argument("-i", "--id", help="API identifier",
-                        note="if 'id' and 'key' not specified, credentials are obtained from file '%s'" % CREDS_FILE)
+                        note="if 'id' and 'key' not specified, credentials are obtained from file %s" % CREDS_FILE)
     parser.add_argument("-k", "--key", help="API key",
                         note="if not specified while 'id' is, 'key' is asked as a password")
     parser.add_argument("-r", "--reset", action="store_true", help="remove cached collections and items")
@@ -845,7 +868,7 @@ if __name__ == '__main__':
                 os.remove(str(CACHE_PATH.joinpath(fn)))
             except OSError:
                 pass
-    z = ZoteroCLI(args.id, ["user", "group"][args.group or CACHE_PATH.joinpath("group").exists()], args.key)
+    z = ZoteroCLI(args.id, ["user", "group"][args.group or GROUP_FILE.exists()], args.key)
     if args.command == "count":
         z.count(args.filter)
     elif args.command == "export":
