@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.4.0"
+__version__   = "1.4.1"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -77,18 +77,27 @@ QUERIES = {
 }
 STATIC_WORDS = ["Android", "Bochs", "Linux", "Markov", "NsPack", "Windows"]
 TYPE_EMOJIS = {
-    'blog post':         ":pushpin:",
-    'book':              ":book:",
-    'computer program':  ":floppy_disk:",
-    'conference paper':  ":notebook:",
-    'default':           ":question:",
-    'document':          ":page_facing_up:",
-    'journal article':   ":page_with_curl:",
-    'manuscript':        ":scroll:",
-    'newspaper article': ":newspaper:",
-    'presentation':      ":bar_chart:",
-    'thesis':            ":mortar_board:",
-    'webpage':           ":earth_americas:",
+    'artwork':              ":art:",
+    'audio recording':      ":microphone:",
+    'blog post':            ":pushpin:",
+    'book':                 ":closed_book:",
+    'computer program':     ":floppy_disk:",
+    'conference paper':     ":notebook:",
+    'default':              ":question:",
+    'document':             ":page_facing_up:",
+    'email':                ":email:",
+    'encyclopedia article': ":book:",
+    'journal article':      ":newspaper:",
+    'magazine article':     ":page_with_curl:",
+    'manuscript':           ":scroll:",
+    'newspaper article':    ":newspaper:",
+    'podcast':              ":video_camera:",
+    'presentation':         ":bar_chart:",
+    'report':               ":clipboard:",
+    'thesis':               ":mortar_board:",
+    'tv broadcast':         ":tv:",
+    'video recording':      ":movie_camera:",
+    'webpage':              ":earth_americas:",
 }
 
 
@@ -621,7 +630,7 @@ class ZoteroCLI(object):
                 if "{stars}" in line_format:
                     r = float(d['rank']) if d['rank'] != "-" else 0.
                     s = " :star2:" if r == mr else " :star:"
-                    d['stars'] = "" if r < .5 else s if .5 <= r < .7 else 2*s if .7 <= r < .85 else 3*s
+                    d['stars'] = "" if r < .35 else s if .35 <= r < .65 else 2*s if .65 <= r < .85 else 3*s
                 lines.append(line_format.format(**d))
             r = Report(List(*lines))
         r.filename = "export"
