@@ -61,7 +61,7 @@ INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "nu
                   "numPages", "rank", "references", "year", "zscc"]
 NOTE_FIELDS = ["comments", "results", "what"]
 
-TIME_FORMATS = ["%Y", "%Y-%m", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S"]
+TIME_FORMATS = ["%Y", "%Y-%m", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S.%fZ",  "%m/%d/%Y", "%Y-%m-%dT%H:%M:%S%z", "%m/%Y"]
 
 CHARTS  = ["software-in-time"]
 MARKERS = [("read", "unread", "this will display the entry as normal instead of bold"),
@@ -338,7 +338,11 @@ class ZoteroCLI(object):
                         if f in NOTE_FIELDS:
                             d[f] = c.strip()
             if "year" in afields:
-                d['year'] = ZoteroCLI.date(i['data']['date'], i).year
+                dt = i.get('data', {'date': None}).get('date')
+                if dt:
+                    d['year'] = ZoteroCLI.date(dt, i).year
+                else:
+                    logger.warning("No date in '%s' (requested output 'year' column will be empty)." % ZoteroCLI.title(i))
             # now apply filters
             pass_item = False
             for field, tfilters in _filters.items():
@@ -738,6 +742,10 @@ class ZoteroCLI(object):
                         print("- %s" % i)
     
     @staticmethod
+    def title(data=None):
+        return(data or {}).get('data', data).get('title', "undefined")
+
+    @staticmethod
     def date(date_str, data=None):
         for f in [""] + TIME_FORMATS:
             try:
@@ -746,9 +754,10 @@ class ZoteroCLI(object):
                 pass
         msg = "Bad datetime format: %s" % date_str
         if data:
-            msg += " (%s)" % (data or {}).get('data', data).get('title', "undefined")
-        logger.error(msg)
-        raise ValueError
+            msg += " for item titled '%s'" % ZoteroCLI.title(data)
+        msg += ". Using default date 1900-01-01."
+        logger.warning(msg)
+        return datetime.strptime("1900-01-01", "%Y-%m-%d")
     
     @staticmethod
     def header(field):
