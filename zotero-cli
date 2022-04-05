@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.4.1"
+__version__   = "1.4.2"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -87,6 +87,7 @@ TYPE_EMOJIS = {
     'document':             ":page_facing_up:",
     'email':                ":email:",
     'encyclopedia article': ":book:",
+    'forum post':           ":pushpin:",
     'journal article':      ":newspaper:",
     'magazine article':     ":page_with_curl:",
     'manuscript':           ":scroll:",
@@ -269,7 +270,8 @@ class ZoteroCLI(object):
                         d[field] = self._format_value(value, field)
             # compute non-existing fields if required
             if "abstractShortNote" in afields:
-                d['abstractShortNote'] = re.split(r"\.(\s|$)", i['data']['abstractNote'])[0].strip() + "."
+                asn = re.split(r"\.(\s|$)", i['data']['abstractNote'])[0]
+                d['abstractShortNote'] = re.sub(r"\r?\n", "", asn.strip()) + "."
             if "attachments" in afields:
                 d['attachments'] = [x['data']['title'] for x in self.attachments if x['data']['parentItem'] == i['key']]
             if "authors" in afields:
@@ -338,11 +340,11 @@ class ZoteroCLI(object):
                         if f in NOTE_FIELDS:
                             d[f] = c.strip()
             if "year" in afields:
-                dt = i.get('data', {'date': None}).get('date')
+                dt = i.get('data', {}).get('date')
                 if dt:
                     d['year'] = ZoteroCLI.date(dt, i).year
                 else:
-                    logger.warning("No date in '%s' (requested output 'year' column will be empty)." % ZoteroCLI.title(i))
+                    logger.warning("No date in '%s' ('year' column will be empty)." % ZoteroCLI.title(i))
             # now apply filters
             pass_item = False
             for field, tfilters in _filters.items():
