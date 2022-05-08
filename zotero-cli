@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.4.3"
+__version__   = "1.4.4"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -341,10 +341,7 @@ class ZoteroCLI(object):
                             d[f] = c.strip()
             if "year" in afields:
                 dt = i.get('data', {}).get('date')
-                if dt:
-                    d['year'] = ZoteroCLI.date(dt, i).year
-                else:
-                    logger.warning("No date in '%s' ('year' column will be empty)." % ZoteroCLI.title(i))
+                d['year'] = ZoteroCLI.date(dt, i).year if dt else 1900
             # now apply filters
             pass_item = False
             for field, tfilters in _filters.items():
@@ -572,7 +569,7 @@ class ZoteroCLI(object):
     def export(self, fields=None, filters=None, sort=None, desc=False, limit=None, line_format=None,
                output_format="xslx"):
         """ Export the selected fields of items while applying filters to an Excel file. """
-        if "{stars}" in line_format and "rank" not in fields:
+        if "{stars}" in (line_format or "") and "rank" not in fields:
             fields.append("rank")
         headers, data = self._items(fields, filters, sort, desc, limit)
         if output_format == "xslx":
@@ -778,9 +775,10 @@ class ZoteroCLI(object):
                 logger.warning("Bad value '%s' for field %s" % (value, field))
                 return -1
         elif field == "title":
-            s = str(value).lower().lstrip(string.punctuation)
+            s = str(value).lower()
             if len(s) > 0 and s.split(maxsplit=1)[0] in ["a", "an", "the"]:
                 s = s.split(maxsplit=1)[-1]
+            s = re.sub(r"^\$", "s", re.sub(r"^\@", "a", s.lstrip())).lstrip(string.punctuation)
             return s
         else:
             return str(value).lower()
