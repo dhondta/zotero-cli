@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.4.2"
+__version__   = "1.4.3"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -778,7 +778,7 @@ class ZoteroCLI(object):
                 logger.warning("Bad value '%s' for field %s" % (value, field))
                 return -1
         elif field == "title":
-            s = str(value).lower()
+            s = str(value).lower().lstrip(string.punctuation)
             if len(s) > 0 and s.split(maxsplit=1)[0] in ["a", "an", "the"]:
                 s = s.split(maxsplit=1)[-1]
             return s
