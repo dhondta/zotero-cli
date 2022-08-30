@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.4.4"
+__version__   = "1.5.0"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -32,13 +32,8 @@ __examples__  = [
     "show title date zscc -s date -l '>zscc:10'",
 ]
 
-CACHE_FILES = {
-    'attachments': "attachments.json",
-    'collections': "collections.json",
-    'items':       "items.json",
-    'marks':       "marks.json",
-    'notes':       "notes.json",
-}
+OBJECTS = ["attachments", "notes", "annotations"]
+CACHE_FILES = ["collections", "items", "marks"] + OBJECTS
 CACHE_PATH = ts.Path("~/.zotero/cache", create=True, expand=True)
 CREDS_FILE = ts.CredentialsPath("~/.zotero")
 GROUP_FILE = ts.Path("~/.zotero/group", expand=True)
@@ -58,7 +53,7 @@ FIELD_ALIASES = {
 }
 FLOAT_FIELDS = []
 INTEGER_FIELDS = ["callNumber", "citations", "numAttachments", "numAuthors", "numCreators", "numEditors", "numNotes",
-                  "numPages", "rank", "references", "year", "zscc"]
+                  "numAnnotations", "numPages", "rank", "references", "year", "zscc"]
 NOTE_FIELDS = ["comments", "results", "what"]
 
 TIME_FORMATS = ["%Y", "%Y-%m", "%b %Y", "%B %Y", "%Y-%m-%dT%H:%M:%SZ", "%b %d %Y at %I:%M%p", "%B %d, %Y, %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S.%fZ",  "%m/%d/%Y", "%Y-%m-%dT%H:%M:%S%z", "%m/%Y"]
@@ -109,8 +104,10 @@ class ZoteroCLI(object):
             CREDS_FILE.secret = api_key
             CREDS_FILE.save()
         self.__zot = None
-        for k in ["collections", "items", "attachments", "notes"]:  # not CACHE_FILES.keys() ; order matters here
-            cached_file = CACHE_PATH.joinpath(CACHE_FILES[k])
+        for k in CACHE_FILES:
+            if k == "marks":
+                continue
+            cached_file = CACHE_PATH.joinpath(k + ".json")
             try:
                 if k == "creds":
                     continue
@@ -130,30 +127,30 @@ class ZoteroCLI(object):
                         return
                 elif k == "items":
                     self.items = list(self.__zot.everything(self.__zot.top()))
-                elif k in ["attachments", "notes"]:
-                    for attr in ["attachments", "notes"]:
+                elif k in OBJECTS:
+                    for attr in OBJECTS:
                         if not hasattr(self, attr):
                             setattr(self, attr, [])
                     for i in self.items[:]:
                         if i['meta']['numChildren'] > 0:
                             for c in self.__zot.children(i['key']):
-                                if c['data']['itemType'] == "attachment":
-                                    self.attachments.append(c)
-                                elif c['data']['itemType'] == "note":
-                                    self.notes.append(c)
+                                t = c['data']['itemType']
+                                tpl = "%ss" % t
+                                if tpl in OBJECTS:
+                                    getattr(self, tpl).append(c)
                                 else:
-                                    raise ValueError("Unknown item type '%s'" % c['data']['itemType'])
+                                    raise ValueError("Unknown item type '%s'" % t)
                 with cached_file.open('w') as f:
                     logger.debug("Saving %s to cache '%s'..." % (k, cached_file))
                     json.dump(getattr(self, k), f)
-        self._marks_file = CACHE_PATH.joinpath(CACHE_FILES['marks'])
+        self._marks_file = CACHE_PATH.joinpath("marks.json")
         if not self._marks_file.exists():
             self._marks_file.write_text("{}")
         with self._marks_file.open() as f:
             logger.debug("Opening marks from cache '%s'..." % self._marks_file)
             self.marks = json.load(f)
         self.__objects = {}
-        for a in CACHE_FILES.keys():
+        for a in CACHE_FILES:
             d = getattr(self, a)
             if isinstance(d, list):
                 for x in d:
@@ -317,6 +314,8 @@ class ZoteroCLI(object):
                 d['numEditors'] = len([x for x in i['data']['creators'] if x['creatorType'] == "editor"])
             if "numNotes" in afields:
                 d['numNotes'] = len([x for x in self.notes if x['data']['parentItem'] == i['key']])
+            if "numAnnotations" in afields:
+                d['numAnnotations'] = len([x for x in self.annotations if x['data']['parentItem'] == i['key']])
             if "numPages" in afields:
                 p = i['data'].get('numPages', i['data'].get('pages')) or "0"
                 m = re.match(r"(\d+)(?:\s*[\-–]+\s*(\d+))?$", p)
@@ -879,11 +878,11 @@ if __name__ == '__main__':
             if args.sort[0] in "<>":
                 args.sort = args.sort[1:]
     if args.command == "reset" or args.reset:
-        for k, fn in CACHE_FILES.items():
-            if getattr(args, "reset_items", False) and k not in ["items", "attachments", "notes"] or k == "marks":
+        for k in CACHE_FILES:
+            if getattr(args, "reset_items", False) and k not in ["items"] + OBJECTS or k == "marks":
                 continue
             try:
-                os.remove(str(CACHE_PATH.joinpath(fn)))
+                os.remove(str(CACHE_PATH.joinpath(k + ".json")))
             except OSError:
                 pass
     z = ZoteroCLI(args.id, ["user", "group"][args.group or GROUP_FILE.exists()], args.key)
