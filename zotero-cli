@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.5.0"
+__version__   = "1.5.1"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -108,15 +108,17 @@ class ZoteroCLI(object):
             if k == "marks":
                 continue
             cached_file = CACHE_PATH.joinpath(k + ".json")
-            try:
+            if cached_file.exists():
                 if k == "creds":
-                    continue
+                    continue  # marks is not saved as self.marks but well self._marks_file ; process it separately
                 with cached_file.open() as f:
                     logger.debug("Getting %s from cache '%s'..." % (k, cached_file))
                     setattr(self, k, json.load(f))
-            except OSError:
+            else:
+                # acquire credentials and setup a zotero.Zotero instance once
                 self._creds()
                 self.__zot = self.__zot or zotero.Zotero(CREDS_FILE.id, api_id_type, CREDS_FILE.secret)
+                # now get the data from zotero.org
                 logger.debug("Getting %s from zotero.org..." % k)
                 if k == "collections":
                     try:
@@ -132,7 +134,7 @@ class ZoteroCLI(object):
                         if not hasattr(self, attr):
                             setattr(self, attr, [])
                     for i in self.items[:]:
-                        if i['meta']['numChildren'] > 0:
+                        if i['meta'].get('numChildren', 0) > 0:
                             for c in self.__zot.children(i['key']):
                                 t = c['data']['itemType']
                                 tpl = "%ss" % t
@@ -881,10 +883,7 @@ if __name__ == '__main__':
         for k in CACHE_FILES:
             if getattr(args, "reset_items", False) and k not in ["items"] + OBJECTS or k == "marks":
                 continue
-            try:
-                os.remove(str(CACHE_PATH.joinpath(k + ".json")))
-            except OSError:
-                pass
+            CACHE_PATH.joinpath(k + ".json").remove(False)
     z = ZoteroCLI(args.id, ["user", "group"][args.group or GROUP_FILE.exists()], args.key)
     if args.command == "count":
         z.count(args.filter)
