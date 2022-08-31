@@ -12,7 +12,7 @@ setup(
   author = "Alexandre D\'Hondt",
   author_email = "alexandre.dhondt@gmail.com",
   url = "https://github.com/dhondta/zotero-cli",
-  version = "1.4.4",
+  version = "1.5.0",
   license = "GPLv3",
   description = "Tinyscript tool for sorting and exporting Zotero references based on pyzotero",
   long_description=long_descr,
