@@ -12,7 +12,7 @@ from tinyscript.report import *
 
 __author__    = "Alexandre D'Hondt"
 __email__     = "alexandre.dhondt@gmail.com"
-__version__   = "1.5.1"
+__version__   = "1.5.2"
 __copyright__ = ("A. D'Hondt", 2020)
 __license__   = "gpl-3.0"
 __doc__       = """
@@ -113,7 +113,10 @@ class ZoteroCLI(object):
                     continue  # marks is not saved as self.marks but well self._marks_file ; process it separately
                 with cached_file.open() as f:
                     logger.debug("Getting %s from cache '%s'..." % (k, cached_file))
-                    setattr(self, k, json.load(f))
+                    try:
+                        setattr(self, k, json.load(f))
+                    except json.decoder.JSONDecodeError:
+                        setattr(self, k, [])
             else:
                 # acquire credentials and setup a zotero.Zotero instance once
                 self._creds()
@@ -145,7 +148,9 @@ class ZoteroCLI(object):
                 with cached_file.open('w') as f:
                     logger.debug("Saving %s to cache '%s'..." % (k, cached_file))
                     json.dump(getattr(self, k), f)
+        # handle marks.json separately
         self._marks_file = CACHE_PATH.joinpath("marks.json")
+        # on the contrary of other JSON files (which are lists of dictionaries), marks.json is a dictionary
         if not self._marks_file.exists():
             self._marks_file.write_text("{}")
         with self._marks_file.open() as f:
