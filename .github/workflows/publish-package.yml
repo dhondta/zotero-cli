@@ -62,6 +62,5 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
-        repository-url: https://pypi.org/project/zotero-cli-tool/
         verbose: true
         verify_metadata: false

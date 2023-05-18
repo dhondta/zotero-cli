@@ -5,7 +5,7 @@
 [![PyPi](https://img.shields.io/pypi/v/zotero-cli-tool.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
 ![Platform](https://img.shields.io/badge/platform-linux-yellow.svg)
 [![Python Versions](https://img.shields.io/pypi/pyversions/peid.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
-[![Build Status](https://github.com/dhondta/zotero-cli/actions/workflows/python-package.yml/badge.svg)](https://github.com/dhondta/zotero-cli/actions/workflows/python-package.yml)
+[![Build Status](https://github.com/dhondta/zotero-cli/actions/workflows/publish-package.yml/badge.svg)](https://github.com/dhondta/zotero-cli/actions/workflows/publish-package.yml)
 [![Read The Docs](https://readthedocs.org/projects/zotero-cli/badge/?version=latest)](https://zotero-cli.readthedocs.io/en/latest/?badge=latest)
 [![Known Vulnerabilities](https://snyk.io/test/github/dhondta/zotero-cli/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/dhondta/zotero-cli?targetFile=requirements.txt)
 [![DOI](https://zenodo.org/badge/321932121.svg)](https://zenodo.org/badge/latestdoi/321932121)
