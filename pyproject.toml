@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "zotero.__info__.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt"]
+
+[project]
+name = "zotero-cli-tool"
+authors = [
+  {name="Alexandre D'Hondt", email="alexandre.dhondt@gmail.com"},
+]
+description = "Tinyscript tool for sorting and exporting Zotero references based on pyzotero"
+license = {file = "LICENSE"}
+keywords = ["zotero", "citations", "cli-app", "tinyscript"]
+requires-python = ">=3.8,<4"
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+  "matplotlib",
+  "pyzotero",
+  "tinyscript>=1.27.5",
+  "xlsxwriter",
+]
+dynamic = ["version"]
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+[project.urls]
+homepage = "https://github.com/dhondta/zotero-cli"
+issues = "https://github.com/dhondta/zotero-cli/issues"
+repository = "https://github.com/dhondta/zotero-cli"
+
+[project.scripts]
+zotero-cli = "zotero.__main__:main"
