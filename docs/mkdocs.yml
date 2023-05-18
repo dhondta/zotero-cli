@@ -1,0 +1,43 @@
+site_author: dhondta
+site_name: "ZoteroCLI - Tool for manipulating Zotero references"
+copyright: Copyright &copy; 2020-2023 Alexandre D'Hondt
+repo_url: https://github.com/dhondta/zotero-cli
+docs_dir: pages
+nav:
+  - Introduction: index.md
+  - Using Zotero-CLI: usage.md
+  - FAQ: faq.md
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/solid/paper-plane
+      link: mailto:alexandre.dhondt@gmail.com
+      name: Contact Alex
+    - icon: fontawesome/brands/github
+      link: https://github.com/dhondta
+      name: Alex on GitHub
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/alexandre-d-2ab2aa14/
+      name: Alex on LinkedIn
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/alex_dhondt
+      name: Alex on Twitter
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7 
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  logo: imgs/logo.png
+  favicon: imgs/icon.png
+use_directory_urls: false
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
