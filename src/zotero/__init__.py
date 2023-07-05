@@ -746,6 +746,8 @@ class ZoteroCLI(object):
 
     @staticmethod
     def date(date_str, data=None):
+        if date_str == "":
+            return datetime.strptime("1900-01-01", "%Y-%m-%d")
         dt = ts.dateparse(date_str)
         if dt:
             return dt

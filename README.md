@@ -1,6 +1,6 @@
 <p align="center"><img src="https://github.com/dhondta/zotero-cli/raw/main/docs/pages/imgs/logo.png"></p>
 <h1 align="center">Zotero CLI <a href="https://twitter.com/intent/tweet?text=Zotero%20CLI%20-%20A%20Tinyscript%20tool%20for%20sorting,%20ranking%20and%20exporting%20Zotero%20references%20based%20on%20pyzotero.%0D%0Ahttps%3a%2f%2fgithub%2ecom%2fdhondta%2fzotero-cli%0D%0A&hashtags=python,zotero,cli,pyzotero,pagerank"><img src="https://img.shields.io/badge/Tweet--lightgrey?logo=twitter&style=social" alt="Tweet" height="20"/></a></h1>
-<h3 align="center">Sort and rank your Zotero references easy from your CLI.</h3>
+<h3 align="center">Sort and rank your Zotero references easy from your CLI.<br>Ask questions to your Zotero documents with GPT locally.</h3>
 
 [![PyPi](https://img.shields.io/pypi/v/zotero-cli-tool.svg)](https://pypi.python.org/pypi/zotero-cli-tool/)
 ![Platform](https://img.shields.io/badge/platform-linux-yellow.svg)
@@ -103,7 +103,7 @@ Available queries:
 - `top-10-most-relevants`: top-10 best ranked items ; displayed fields: `year`, `title`, `numPages`, `itemType`
 - `top-50-most-relevants`: same as top-10 but with the top-50
 
-- Mark items
+Mark items:
 
 ```sh
 $ zotero-cli mark read --filter "title:a nice paper"
@@ -115,6 +115,55 @@ $ zotero-cli mark unread --filter "title:a nice paper"
 > - `read` / `unread`: by default, items are displayed in bold ; marking an item as read will make it display as normal
 > - `irrelevant` / `relevant`: this allows to exclude a result from the output list of items
 > - `ignore` / `unignore`: this allows to completely ignore an item, including in the ranking algorithm
+
+
+## :computer: Local GPT
+
+This feature is based on [PrivateGPT](https://github.com/imartinez/privateGPT). It can be used to ingest local Zotero documents and ask questions based on a chosen GPT model.
+
+- Install optional dependencies
+
+```sh
+$ pip install zotero-cli-tool[gpt]
+```
+
+- Install a model among the followings:
+
+  - `ggml-gpt4all-j-v1.3-groovy.bin` (default)
+  - `ggml-gpt4all-l13b-snoozy.bin`
+  - `ggml-mpt-7b-chat.bin`
+  - `ggml-v3-13b-hermes-q5_1.bin`
+  - `ggml-vicuna-7b-1.1-q4_2.bin`
+  - `ggml-vicuna-13b-1.1-q4_2.bin`
+  - `ggml-wizardLM-7B.q4_2.bin`
+  - `ggml-stable-vicuna-13B.q4_2.bin`
+  - `ggml-mpt-7b-base.bin`
+  - `ggml-nous-gpt4-vicuna-13b.bin`
+  - `ggml-mpt-7b-instruct.bin`
+  - `ggml-wizard-13b-uncensored.bin`
+
+```sh
+$ zotero-cli install
+```
+
+The latest installed model gets selected for the `ask` command (see hereafter).
+
+- Ingest your documents
+
+```sh
+$ zotero-cli ingest
+```
+
+- Ask questions to your documents
+
+```sh
+$ zotero-cli ask
+Using embedded DuckDB with persistence: data will be stored in: /home/morfal/.zotero/db
+Found model file.
+[...]
+Enter a query: 
+
+```
 
 
 ## :bulb: Special Features

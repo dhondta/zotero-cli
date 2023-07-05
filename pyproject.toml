@@ -40,6 +40,16 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+gpt = [
+  "chromadb",
+  "gpt4all",
+  "langchain",
+  "llama-cpp-python",
+  "requests",
+  "tqdm",
+]
+
 [project.readme]
 file = "README.md"
 content-type = "text/markdown"

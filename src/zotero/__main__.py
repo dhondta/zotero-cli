@@ -3,6 +3,11 @@ from tinyscript import *
 
 from .__info__ import __author__, __email__, __source__, __version__
 from .__init__ import *
+try:
+    from .gpt import *
+    __GPT = True
+except ImportError:
+    __GPT = False
 
 
 __copyright__ = ("A. D'Hondt", 2020)
@@ -59,6 +64,12 @@ def main():
     parser.add_argument("-r", "--reset", action="store_true", help="remove cached collections and items")
     # commands: count | export | list | plot | reset | show | view
     sparsers = parser.add_subparsers(dest="command", help="command to be executed")
+    if __GPT:
+        cask = sparsers.add_parser("ask", help="ask questions to your Zotero documents")
+        cask.add_argument("name", default=MODEL_DEFAULT_NAME, choices=MODELS, nargs="?", help="model name")
+        cask.add_argument("-c", "--show-content", action="store_true", help="show content from source documents")
+        cask.add_argument("-m", "--mute-stream", action="store_true", help="disable streaming StdOut callback for LLMs")
+        cask.add_argument("-s", "--show-source", action="store_true", help="show source documents")
     ccount = sparsers.add_parser("count", help="count items")
     _set_arg(ccount, "filter", "filter to be applied while counting")
     _set_arg(ccount, "query")
@@ -68,6 +79,11 @@ def main():
     cexpt.add_argument("-o", "--output-format", default="xlsx", help="output format",
                        choices=["csv", "html", "json", "md", "pdf", "rst", "xml", "xlsx", "yaml"])
     _set_args(cexpt, "filter", "limit", "query", "sort")
+    if __GPT:
+        cingest = sparsers.add_parser("ingest", help="ingest Zotero documents")
+        cinst = sparsers.add_parser("install", help="install a GPT model")
+        cinst.add_argument("name", default=MODEL_DEFAULT_NAME, choices=MODEL_NAMES, nargs="?", help="model name")
+        cinst.add_argument("-d", "--download", action="store_true", help="download the input model")
     clist = sparsers.add_parser("list", help="list distinct values for the given field")
     clist.add_argument("field", help="field whose distinct values are to be listed")
     _set_args(clist, "filter", "query")
@@ -82,14 +98,18 @@ def main():
     _set_args(cplot, "filter", "query")
     creset = sparsers.add_parser("reset", help="reset cached collections and items")
     creset.add_argument("-r", "--reset-items", action="store_true", help="reset items only")
+    if __GPT:
+        cselect = sparsers.add_parser("select", help="select a GPT model")
+        cselect.add_argument("name", default=MODEL_DEFAULT_NAME, choices=MODELS, nargs="?", help="model name")
     cshow = sparsers.add_parser("show", help="show a list of items")
-    cshow.add_argument("field", nargs="+", help="field to be shown")
+    cshow.add_argument("field", nargs="*", help="field to be shown")
     _set_args(cshow, "filter", "limit", "query", "sort")
     cview = sparsers.add_parser("view", help="view a single item")
     cview.add_argument("name", help="field name for selection")
     cview.add_argument("value", help="field value to be selected")
     cview.add_argument("field", nargs="+", help="field to be shown")
     initialize()
+    args.logger = logger
     if getattr(args, "query", None):
         if hasattr(args, "field") and args.field == ["-"]:
             args.field = QUERIES[args.query].get('fields', ["title"])
@@ -114,6 +134,8 @@ def main():
         z.count(args.filter)
     elif args.command == "export":
         z.export(args.field, args.filter, args.sort, args.desc, args.limit, args.line_format, args.output_format)
+    elif args.command == "install":
+        install()
     elif args.command == "list":
         z.list(args.field, args.filter, args.desc, args.limit)
     elif args.command == "mark":
@@ -125,4 +147,6 @@ def main():
         z.show(args.field, args.filter, args.sort, args.desc, args.limit)
     elif args.command == "view":
         z.view(args.name, args.value, args.field)
+    else:  # handle commands from gpt.py
+        globals()[args.command](**vars(args))
 
