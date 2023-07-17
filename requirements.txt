@@ -8,3 +8,4 @@ requests
 tinyscript>=1.27.5
 tqdm
 xlsxwriter
+numpy>=1.22.2 # not directly required, pinned by Snyk to avoid a vulnerability
