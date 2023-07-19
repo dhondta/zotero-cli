@@ -1,6 +1,6 @@
 chromadb
 gpt4all
-langchain
+langchain>=0.0.225
 llama-cpp-python
 matplotlib
 pyzotero

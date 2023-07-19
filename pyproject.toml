@@ -44,7 +44,7 @@ dynamic = ["version"]
 gpt = [
   "chromadb",
   "gpt4all",
-  "langchain",
+  "langchain>=0.0.225",
   "llama-cpp-python",
   "requests",
   "tqdm",
