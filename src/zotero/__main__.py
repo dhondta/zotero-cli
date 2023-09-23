@@ -147,6 +147,6 @@ def main():
         z.show(args.field, args.filter, args.sort, args.desc, args.limit)
     elif args.command == "view":
         z.view(args.name, args.value, args.field)
-    else:  # handle commands from gpt.py
+    elif args.command != "reset":  # handle commands from gpt.py
         globals()[args.command](**vars(args))
 
