@@ -35,7 +35,7 @@ classifiers = [
 dependencies = [
   "matplotlib",
   "pyzotero",
-  "tinyscript>=1.28.5",
+  "tinyscript>=1.28.6",
   "xlsxwriter",
 ]
 dynamic = ["version"]
