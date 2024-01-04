@@ -33,6 +33,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
+  "fonttools>=4.43.0",  # SNYK-PYTHON-FONTTOOLS-6133203
   "matplotlib",
   "pyzotero",
   "tinyscript>=1.28.6",
@@ -46,7 +47,9 @@ gpt = [
   "gpt4all",
   "langchain>=0.0.225",
   "llama-cpp-python",
+  "numpy>=1.22.2",  # SNYK-PYTHON-NUMPY-2321964
   "requests",
+  "sympy>=1.12",  # SNYK-PYTHON-SYMPY-6084333
   "tqdm",
 ]
 
