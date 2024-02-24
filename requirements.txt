@@ -12,3 +12,4 @@ tinyscript>=1.28.6
 tqdm
 xlsxwriter
 pillow>=10.0.1 # fixed with tinyscript>=1.28.6 ; asciistuff>=1.2.6
+fastapi>=0.109.1 # not directly required, pinned by Snyk to avoid a vulnerability
