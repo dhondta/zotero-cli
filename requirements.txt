@@ -8,8 +8,8 @@ numpy>=1.22.2  # SNYK-PYTHON-NUMPY-2321964
 pyzotero
 requests
 sympy>=1.12  # SNYK-PYTHON-SYMPY-6084333
-tinyscript>=1.28.6
+tinyscript>=1.30.6
 tqdm
 xlsxwriter
-pillow>=10.0.1 # fixed with tinyscript>=1.28.6 ; asciistuff>=1.2.6
-fastapi>=0.109.1 # not directly required, pinned by Snyk to avoid a vulnerability
+pillow>=10.2.0  # fixed with tinyscript>=1.30.6 ; asciistuff>=1.3.0
+fastapi>=0.109.1  # SNYK-PYTHON-FASTAPI-6228055

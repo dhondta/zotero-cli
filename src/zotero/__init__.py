@@ -8,6 +8,9 @@ from pyzotero import zotero, zotero_errors
 from tinyscript import *
 from tinyscript.helpers.text import _indent
 from tinyscript.report import *
+from warnings import filterwarnings
+
+filterwarnings("ignore", "The input looks more like a filename than markup")
 
 
 __all__ = ["ZoteroCLI",
@@ -194,6 +197,32 @@ class ZoteroCLI(object):
             CREDS_FILE.ask("API ID: ", "API key: ")
             CREDS_FILE.save()
     
+    def _expand_limit(self, limit, sort=None, desc=False, age=True):
+        """ Expand the 'limit' parameter according to the following format: (([order])[field]:)[limit]
+             - order: "<" for increasing, ">" for decreasing
+             - field: target field
+             - limit: numerical value for limiting records """
+        lfield, lfdesc = sort, desc
+        if limit is not None:
+            try:
+                lfield, limit = limit.split(":")
+                lfield = lfield.strip()
+                # handle [<>] as sort orders
+                if lfield[0] in "<>":
+                    lfdesc = lfield[0] == ">"
+                    lfield = lfield[1:]
+                # handle "rank*" as using the strict rank, that is, with no damping factor relatd to the item's age
+                if lfield == "rank*":
+                    age = False
+                    lfield = "rank"
+            except ValueError:
+                pass
+            if not str(limit).isdigit() or int(limit) <= 0:
+                raise ValueError("Bad limit number ; sould be a positive integer")
+            limit = int(limit)
+        return limit, lfield, lfdesc, age
+
+    
     def _filter(self, fields=None, filters=None, force=False):
         """ Apply one or more filters to the items. """
         # validate and make filters
@@ -229,7 +258,7 @@ class ZoteroCLI(object):
             # filter format: (negate, lambda, lambda's second arg)
             elif field == "tags":
                 if regex not in self._valid_tags and regex not in ["-", "<empty>"]:
-                    logger.debug("Should be one of:\n- " + \
+                    logger.warning(f"Got tag '{regex}' ; should be one of:\n- " + \
                                  "\n- ".join(sorted(self._valid_tags, key=ZoteroCLI.sort)))
                     raise ValueError("Tag '%s' does not exist" % regex)
                 filt = (not_, lambda i, r: r in ["-", "<empty>"] and i['data']['tags'] in ["", []] or \
@@ -246,8 +275,9 @@ class ZoteroCLI(object):
         # validate fields
         afields = (fields or []) + list(_filters.keys())
         for f in afields:
-            if f not in self._valid_fields:
-                logger.debug("Should be one of:\n- " + "\n- ".join(sorted(self._valid_fields, key=ZoteroCLI.sort)))
+            if f not in self._valid_fields and regex != "-":
+                logger.warning(f"Got field name '{f}' ; should be one of:\n- " + \
+                               "\n- ".join(sorted(self._valid_fields, key=ZoteroCLI.sort)))
                 raise ValueError("Bad field name '%s'" % f)
         # now yield items, applying the filters and only selecting the given fields
         for i in self.items:
@@ -335,7 +365,7 @@ class ZoteroCLI(object):
                     d[f] = ""
                 for n in self.notes:
                     if n['data']['parentItem'] == i['key']:
-                        t = bs4.BeautifulSoup(n['data']['note']).text
+                        t = bs4.BeautifulSoup(n['data']['note'], "html.parser").text
                         try:
                             f, c = t.split(":", 1)
                         except:
@@ -408,35 +438,21 @@ class ZoteroCLI(object):
             fields.insert(fields.index(f), "rank")
             fields.remove(f)
         # extract the limit field
-        lfield, lfdesc = sort, desc
-        if limit is not None:
-            try:
-                lfield, limit = limit.split(":")
-                lfield = lfield.strip()
-                # handle [<>] as sort orders
-                if lfield[0] in "<>":
-                    lfdesc = lfield[0] == ">"
-                    lfield = lfield[1:]
-                # handle "rank*" as using the strict rank, that is, with no damping factor relatd to the item's age
-                if lfield == "rank*":
-                    age = False
-                    lfield = "rank"
-            except ValueError:
-                pass
-            if not str(limit).isdigit() or int(limit) <= 0:
-                raise ValueError("Bad limit number ; sould be a positive integer")
-            limit = int(limit)
+        limit, lfield, lfdesc, age = self._expand_limit(limit, sort, desc, age)
         # select relevant items, including all the fields required for further computations
         ffields = fields[:]
         if sort not in ffields:
             ffields.append(sort)
         if "rank" in fields or lfield == "rank" or sort == "rank" or \
            "rank" in [f.split(":")[0].lstrip("~") for f in filters or []]:
-            for f in ["rank", "citations", "references", "year", "zscc"]:
+            for f in ["rank", "title", "citations", "references", "year", "zscc"]:
                 if f not in ffields:
                     ffields.append(f)
         if lfield not in ffields:
             ffields.append(lfield)
+        logger.debug(f"Selected fields: {'|'.join(ffields)}")
+        if len(filters):
+            logger.debug(f"Filtering entries ({filters})...")
         items = {i['key']: i for i in \
                  self._filter(ffields, [f for f in filters if not re.match(r"\~?rank\:", f)], force)}
         if len(items) == 0:
@@ -473,7 +489,7 @@ class ZoteroCLI(object):
                                     self.ranks[k1] += self.ranks.get(k2, 0.) / r
                 # check for convergence
                 if tuple(self.ranks.values()) == prev:
-                    logger.debug("Ranking algorithm converged after %d iterations" % n)
+                    logger.debug(f"Ranking algorithm converged after {n} iterations")
                     break
                 prev = tuple(self.ranks.values())
             # apply the damping factor at the very end
@@ -493,7 +509,7 @@ class ZoteroCLI(object):
             self.ranks = {k: v / max_rank if max_rank else 0. for k, v in self.ranks.items()}
             for k, r in sorted(self.ranks.items(), key=lambda x: -x[1]):
                 k_d = items[k]['data']
-                logger.debug("%.05f - %s (%s)" % (r, k_d['title'], k_d['date']))
+                logger.debug(f"{r:.05f} - {k_d['title']} ({k_d['date']})")
             # reapply filters, including for fields that were just computed
             items = {i['key']: i for i in self._filter(ffields, filters, force)}
             for k, i in items.items():
@@ -514,15 +530,15 @@ class ZoteroCLI(object):
                 select_items = list(items.values())
             if lfdesc:
                 select_items = select_items[::-1]
-            logger.debug("Limiting to %d items (sorted based on %s in %s order)..." % \
-                         (limit, lfield or sort, ["ascending", "descending"][lfdesc]))
+            logger.debug(f"Limiting to {limit} items (sorted based on {lfield or sort} in "
+                         f"{['ascending', 'descending'][lfdesc]} order)...")
             items = {i['key']: i for i in select_items[:limit]}
         # ensure that the rank field is set for every item
         if "rank" in ffields:
             for i in items.values():
                 i['data']['rank'] = self.ranks.get(i['key'], .0)
         # format the selected items as table data
-        logger.debug("Sorting items based on %s..." % sort)
+        logger.debug(f"Sorting items based on {sort}...")
         for i in sorted(items.values(), key=lambda i: ZoteroCLI.sort(i['data'].get(sort, "-"), sort)):
             row = [self._format_value(i['data'].get(f), f) if i['data'].get(f) else "-" for f in fields]
             if len(row) > 1 and all(x in ".-" for x in row[1:]):  # row[0] is the item's key ; shall never be "." or "-"
@@ -689,7 +705,7 @@ class ZoteroCLI(object):
             for y, t in sorted(data.items(), key=lambda x: x[0]):
                 print(["%d:" % y, "####:"][y == 1900], ", ".join(t))
         else:
-            logger.debug("Should be one of:\n- " + "\n- ".join(sorted(CHARTS)))
+            logger.debug(f"Got chart name '{name}' ; should be one of:\n- " + "\n- ".join(sorted(CHARTS)))
             logger.error("Bad chart")
             raise ValueError
     

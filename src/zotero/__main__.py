@@ -64,47 +64,49 @@ def main():
     parser.add_argument("-r", "--reset", action="store_true", help="remove cached collections and items")
     # commands: count | export | list | plot | reset | show | view
     sparsers = parser.add_subparsers(dest="command", help="command to be executed")
+    kw1, kw2 = {}, {}
     if __GPT:
-        cask = sparsers.add_parser("ask", help="ask questions to your Zotero documents")
+        kw1, kw2 = {'category': "main"}, {'category': "GPT"}
+        cask = sparsers.add_parser("ask", help="ask questions to your Zotero documents", category="GPT")
         cask.add_argument("name", default=MODEL_DEFAULT_NAME, choices=MODELS, nargs="?", help="model name")
         cask.add_argument("-c", "--show-content", action="store_true", help="show content from source documents")
         cask.add_argument("-m", "--mute-stream", action="store_true", help="disable streaming StdOut callback for LLMs")
         cask.add_argument("-s", "--show-source", action="store_true", help="show source documents")
-    ccount = sparsers.add_parser("count", help="count items")
+    ccount = sparsers.add_parser("count", help="count items", category="read")
     _set_arg(ccount, "filter", "filter to be applied while counting")
     _set_arg(ccount, "query")
-    cexpt = sparsers.add_parser("export", help="export items to a file")
+    cexpt = sparsers.add_parser("export", help="export items to a file", category="manage")
     cexpt.add_argument("field", nargs="+", help="field to be shown")
     cexpt.add_argument("-l", "--line-format", help="line's format string for outputting as a list")
     cexpt.add_argument("-o", "--output-format", default="xlsx", help="output format",
                        choices=["csv", "html", "json", "md", "pdf", "rst", "xml", "xlsx", "yaml"])
     _set_args(cexpt, "filter", "limit", "query", "sort")
     if __GPT:
-        cingest = sparsers.add_parser("ingest", help="ingest Zotero documents")
-        cinst = sparsers.add_parser("install", help="install a GPT model")
+        cingest = sparsers.add_parser("ingest", help="ingest Zotero documents", category="GPT")
+        cinst = sparsers.add_parser("install", help="install a GPT model", category="GPT")
         cinst.add_argument("name", default=MODEL_DEFAULT_NAME, choices=MODEL_NAMES, nargs="?", help="model name")
         cinst.add_argument("-d", "--download", action="store_true", help="download the input model")
-    clist = sparsers.add_parser("list", help="list distinct values for the given field")
+    clist = sparsers.add_parser("list", help="list distinct values for the given field", category="read")
     clist.add_argument("field", help="field whose distinct values are to be listed")
-    _set_args(clist, "filter", "query")
+    _set_args(clist, "filter")
     clist.add_argument("-l", "--limit", type=ts.pos_int, help="limit the number of displayed records")
     clist.add_argument("--desc", action="store_true", help="sort results in descending order")
-    cmark = sparsers.add_parser("mark", help="mark items with a marker")
+    cmark = sparsers.add_parser("mark", help="mark items with a marker", category="manage")
     cmark.add_argument("marker", choices=[x for p in MARKERS for x in p[:2]], help="marker to be set",
                        note="possible values:\n - {}".format("\n - ".join("%s: %s" % (p[0], p[2]) for p in MARKERS)))
     _set_args(cmark, "filter", "limit", "query", "sort")
-    cplot = sparsers.add_parser("plot", help="plot various information using Matplotlib")
+    cplot = sparsers.add_parser("plot", help="plot various information using Matplotlib", category="read")
     cplot.add_argument("chart", choices=CHARTS, help="chart to be plotted")
     _set_args(cplot, "filter", "query")
-    creset = sparsers.add_parser("reset", help="reset cached collections and items")
+    creset = sparsers.add_parser("reset", help="reset cached collections and items", category="manage")
     creset.add_argument("-r", "--reset-items", action="store_true", help="reset items only")
     if __GPT:
-        cselect = sparsers.add_parser("select", help="select a GPT model")
+        cselect = sparsers.add_parser("select", help="select a GPT model", category="GPT")
         cselect.add_argument("name", default=MODEL_DEFAULT_NAME, choices=MODELS, nargs="?", help="model name")
-    cshow = sparsers.add_parser("show", help="show a list of items")
+    cshow = sparsers.add_parser("show", help="show a list of items", category="read")
     cshow.add_argument("field", nargs="*", help="field to be shown")
     _set_args(cshow, "filter", "limit", "query", "sort")
-    cview = sparsers.add_parser("view", help="view a single item")
+    cview = sparsers.add_parser("view", help="view a single item", category="read")
     cview.add_argument("name", help="field name for selection")
     cview.add_argument("value", help="field value to be selected")
     cview.add_argument("field", nargs="+", help="field to be shown")
@@ -114,9 +116,9 @@ def main():
         if hasattr(args, "field") and args.field == ["-"]:
             args.field = QUERIES[args.query].get('fields', ["title"])
         args.filter.extend(QUERIES[args.query].get('filter', []))
-        if args.limit is None:
+        if getattr(args, "limit", None) is None:
             args.limit = QUERIES[args.query].get('limit')
-        if args.sort is None:
+        if getattr(args, "sort", None) is None:
             args.sort = QUERIES[args.query].get('sort')
     if hasattr(args, "sort"):
         args.desc = False

@@ -36,7 +36,7 @@ dependencies = [
   "fonttools>=4.43.0",  # SNYK-PYTHON-FONTTOOLS-6133203
   "matplotlib",
   "pyzotero",
-  "tinyscript>=1.28.6",
+  "tinyscript>=1.30.6",
   "xlsxwriter",
 ]
 dynamic = ["version"]
@@ -44,6 +44,7 @@ dynamic = ["version"]
 [project.optional-dependencies]
 gpt = [
   "chromadb",
+  "fastapi>=0.109.1",  # SNYK-PYTHON-FASTAPI-6228055
   "gpt4all",
   "langchain>=0.0.225",
   "llama-cpp-python",
