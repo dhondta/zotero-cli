@@ -4,12 +4,15 @@ gpt4all
 langchain>=0.0.225
 llama-cpp-python
 matplotlib
-numpy>=1.22.2  # SNYK-PYTHON-NUMPY-2321964
+numpy>=1.22.2      # SNYK-PYTHON-NUMPY-2321964
 pyzotero
 requests
-sympy>=1.12  # SNYK-PYTHON-SYMPY-6084333
-tinyscript>=1.30.6
+sympy>=1.12        # SNYK-PYTHON-SYMPY-6084333
+tinyscript>=1.30.16
 tqdm
 xlsxwriter
-pillow>=10.2.0  # fixed with tinyscript>=1.30.6 ; asciistuff>=1.3.0
-fastapi>=0.109.1  # SNYK-PYTHON-FASTAPI-6228055
+pillow>=10.2.0     # fixed with tinyscript>=1.30.6 ; asciistuff>=1.3.0
+fastapi>=0.109.1   # SNYK-PYTHON-FASTAPI-6228055
+requests>=2.32.2   # SNYK-PYTHON-REQUESTS-6928867
+urllib3>=1.26.19   # SNYK-PYTHON-URLLIB3-7267250
+zipp>=3.19.1       # SNYK-PYTHON-ZIPP-7430899

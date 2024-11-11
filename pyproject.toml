@@ -31,12 +31,13 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
   "fonttools>=4.43.0",  # SNYK-PYTHON-FONTTOOLS-6133203
   "matplotlib",
   "pyzotero",
-  "tinyscript>=1.30.6",
+  "tinyscript>=1.30.16",
   "xlsxwriter",
 ]
 dynamic = ["version"]
@@ -48,9 +49,9 @@ gpt = [
   "gpt4all",
   "langchain>=0.0.225",
   "llama-cpp-python",
-  "numpy>=1.22.2",  # SNYK-PYTHON-NUMPY-2321964
-  "requests",
-  "sympy>=1.12",  # SNYK-PYTHON-SYMPY-6084333
+  "numpy>=1.22.2",     # SNYK-PYTHON-NUMPY-2321964
+  "requests>=2.32.2",  # SNYK-PYTHON-REQUESTS-6928867
+  "sympy>=1.12",       # SNYK-PYTHON-SYMPY-6084333
   "tqdm",
 ]
 
