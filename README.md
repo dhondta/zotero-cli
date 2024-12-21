@@ -83,6 +83,9 @@ export.xlsx: Microsoft Excel 2007+
 
 ```
 
+> **Supported formats**: `csv`, `html`, `json`, `md` (Markdown), `rst` (RestructuredText), `xml`, `xslx`, `yaml`
+> Get help with `zotero-cli export --help`
+
 - Use a predefined query
 
 ```sh
