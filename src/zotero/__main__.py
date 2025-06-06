@@ -80,6 +80,7 @@ def main():
     cexpt.add_argument("-l", "--line-format", help="line's format string for outputting as a list")
     cexpt.add_argument("-o", "--output-format", default="xlsx", help="output format",
                        choices=["csv", "html", "json", "md", "pdf", "rst", "xml", "xlsx", "yaml"])
+    cexpt.add_argument("-u", "--check-url", action="store_true", help="check for broken URL's")
     _set_args(cexpt, "filter", "limit", "query", "sort")
     if __GPT:
         cingest = sparsers.add_parser("ingest", help="ingest Zotero documents", category="GPT")
@@ -135,7 +136,8 @@ def main():
     if args.command == "count":
         z.count(args.filter)
     elif args.command == "export":
-        z.export(args.field, args.filter, args.sort, args.desc, args.limit, args.line_format, args.output_format)
+        z.export(args.field, args.filter, args.sort, args.desc, args.limit, args.line_format, args.output_format,
+                 args.check_url)
     elif args.command == "install":
         install()
     elif args.command == "list":

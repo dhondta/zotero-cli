@@ -17,14 +17,14 @@ authors = [
   {name="Alexandre D'Hondt", email="alexandre.dhondt@gmail.com"},
 ]
 description = "Tinyscript tool for sorting and exporting Zotero references based on pyzotero"
-license = {file = "LICENSE"}
+license = "GPL-3.0-or-later"
+license-files = ["LICEN[CS]E*"]
 keywords = ["zotero", "citations", "cli-app", "tinyscript"]
 requires-python = ">=3.8,<4"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Programming Language :: Python :: 3",
 ]
 dependencies = [
@@ -39,6 +39,7 @@ dynamic = ["version"]
 [project.optional-dependencies]
 gpt = [
   "chromadb",
+  "crypt-r; sys_platform != 'darwin'",
   "fastapi>=0.109.1",  # SNYK-PYTHON-FASTAPI-6228055
   "gpt4all",
   "langchain>=0.0.225",

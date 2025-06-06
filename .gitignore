@@ -132,3 +132,4 @@ dmypy.json
 TODO
 .test
 tmp
+*.md

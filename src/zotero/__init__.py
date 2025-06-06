@@ -2,7 +2,9 @@
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import operator
+import requests
 import xlsxwriter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pyzotero import zotero, zotero_errors
 from tinyscript import *
@@ -79,6 +81,32 @@ TYPE_EMOJIS = {
     'video recording':      ":movie_camera:",
     'webpage':              ":earth_americas:",
 }
+URL_NO_CHECK = (
+    "arxiv.org",
+    "dial.uclouvain.be",
+    "dl.acm.org",
+    "hal.inria.fr",
+    "ieeexplore.ieee.org",
+    "inria.hal.science",
+    "iopscience.iop.org",
+    "link.springer.com",
+    "researchportal.rma.ac.be",
+    "scholar.dsu.edu",
+    "web.archive.org",
+    "www.ijofcs.org",
+    "www.jstage.jst.go.jp",
+    "www.ndss-symposium.org",
+    "www.researchgate.net",
+    "www.researchsquare.com",
+    "www.sciencedirect.com",
+    "www.scopus.com",
+    "www.semanticscholar.org",
+    "www.usenix.org",
+)
+
+
+_check_url = lambda url, nocheck=URL_NO_CHECK: url if url.split("://")[-1].split("/")[0] not in nocheck and \
+                                                      requests.head(url).status_code >= 400 else None
 
 
 def _lower_title(title):
@@ -115,7 +143,7 @@ class ZoteroCLI(object):
                 if k == "creds":
                     continue  # marks is not saved as self.marks but well self._marks_file ; process it separately
                 with cached_file.open() as f:
-                    logger.debug("Getting %s from cache '%s'..." % (k, cached_file))
+                    logger.debug(f"Getting {k} from cache '{cached_file}'...")
                     try:
                         setattr(self, k, json.load(f))
                     except json.decoder.JSONDecodeError:
@@ -125,12 +153,12 @@ class ZoteroCLI(object):
                 self._creds()
                 self.__zot = self.__zot or zotero.Zotero(CREDS_FILE.id, api_id_type, CREDS_FILE.secret)
                 # now get the data from zotero.org
-                logger.debug("Getting %s from zotero.org..." % k)
+                logger.debug(f"Getting {k} from zotero.org...")
                 if k == "collections":
                     try:
                         self.collections = list(self.__zot.collections())
                     except zotero_errors.ResourceNotFound:
-                        logger.error("Nothing found for ID %s" % CREDS_FILE.id)
+                        logger.error(f"Nothing found for ID {CREDS_FILE.id}")
                         logger.warning("Beware to use the --group option if this is the ID of a group")
                         return
                 elif k == "items":
@@ -143,13 +171,13 @@ class ZoteroCLI(object):
                         if i['meta'].get('numChildren', 0) > 0:
                             for c in self.__zot.children(i['key']):
                                 t = c['data']['itemType']
-                                tpl = "%ss" % t
+                                tpl = f"{t}s"
                                 if tpl in OBJECTS:
                                     getattr(self, tpl).append(c)
                                 else:
-                                    raise ValueError("Unknown item type '%s'" % t)
+                                    raise ValueError(f"Unknown item type '{t}'")
                 with cached_file.open('w') as f:
-                    logger.debug("Saving %s to cache '%s'..." % (k, cached_file))
+                    logger.debug(f"Saving {k} to cache '{cached_file}'...")
                     json.dump(getattr(self, k), f)
         # handle marks.json separately
         self._marks_file = CACHE_PATH.joinpath("marks.json")
@@ -157,7 +185,7 @@ class ZoteroCLI(object):
         if not self._marks_file.exists():
             self._marks_file.write_text("{}")
         with self._marks_file.open() as f:
-            logger.debug("Opening marks from cache '%s'..." % self._marks_file)
+            logger.debug(f"Opening marks from cache '{self._marks_file}'...")
             self.marks = json.load(f)
         self.__objects = {}
         for a in CACHE_FILES:
@@ -233,9 +261,9 @@ class ZoteroCLI(object):
             try:
                 field, regex = list(map(lambda x: x.strip(), f.split(":", 1)))
             except ValueError as e:
-                raise ValueError("Bad filter '%s' ; format: [field]:[regex]" % f)
+                raise ValueError(f"Bad filter '{f}' ; format: [field]:[regex]")
             if regex == "":
-                raise ValueError("Regex for filter on field '%s' is empty" % field)
+                raise ValueError(f"Regex for filter on field '{field}' is empty")
             not_ = field[0] == "~"
             if not_:
                 field = field[1:]
@@ -262,7 +290,7 @@ class ZoteroCLI(object):
                 if regex not in self._valid_tags and regex not in ["-", "<empty>"]:
                     logger.warning(f"Got tag '{regex}' ; should be one of:\n- " + \
                                  "\n- ".join(sorted(self._valid_tags, key=ZoteroCLI.sort)))
-                    raise ValueError("Tag '%s' does not exist" % regex)
+                    raise ValueError(f"Tag '{regex}' does not exist")
                 filt = (not_, lambda i, r: r in ["-", "<empty>"] and i['data']['tags'] in ["", []] or \
                                         r in (i['data']['tags'].split(";") if ts.is_str(i['data']['tags']) else \
                                               [x['tag'] for x in i['data']['tags']]), regex)
@@ -280,7 +308,7 @@ class ZoteroCLI(object):
             if f not in self._valid_fields and regex != "-":
                 logger.warning(f"Got field name '{f}' ; should be one of:\n- " + \
                                "\n- ".join(sorted(self._valid_fields, key=ZoteroCLI.sort)))
-                raise ValueError("Bad field name '%s'" % f)
+                raise ValueError(f"Bad field name '{f}'")
         # now yield items, applying the filters and only selecting the given fields
         for i in self.items:
             # create a temporary item with computed fields (e.g. citations)
@@ -360,7 +388,7 @@ class ZoteroCLI(object):
                     s, e = m.groups()
                     d['numPages'] = abs(int(s) - int(e or 0)) or -1
                 else:
-                    logger.warning("Bad pages value '%s'" % p)
+                    logger.warning(f"Bad pages value '{p}'")
                     d['numPages'] = -1
             if any(x in NOTE_FIELDS for x in afields):
                 for f in NOTE_FIELDS:
@@ -408,7 +436,7 @@ class ZoteroCLI(object):
         elif field == "itemType":
             return re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', re.sub(r'(.)([A-Z][a-z]+)', r'\1 \2', v)).lower()
         elif field == "rank":
-            return "%.3f" % float(v or "0")
+            return f"{float(v or '0'):.3f}"
         elif field == "year":
             return [str(v), "-"][v == 1900]
         elif ts.is_int(v):
@@ -570,15 +598,15 @@ class ZoteroCLI(object):
             if negate:
                 try:
                     self.marks[marker].remove(k)
-                    logger.debug("Unmarked %s from %s" % (k, marker))
+                    logger.debug(f"Unmarked {k} from {marker}")
                 except ValueError:
                     pass
             elif k not in self.marks[marker]:
-                logger.debug("Marked %s as %s" % (k, marker))
+                logger.debug(f"Marked {k} as {marker}")
                 self.marks[marker].append(k)
         self.marks = {k: l for k, l in self.marks.items() if len(l) > 0}
         with self._marks_file.open('w') as f:
-            logger.debug("Saving marks to cache '%s'..." % self._marks_file)
+            logger.debug(f"Saving marks to cache '{self._marks_file}'...")
             json.dump(self.marks, f)
     
     @ts.try_or_die(exc=ValueError, trace=False)
@@ -589,7 +617,7 @@ class ZoteroCLI(object):
     
     @ts.try_or_die(exc=ValueError, trace=False)
     def export(self, fields=None, filters=None, sort=None, desc=False, limit=None, line_format=None,
-               output_format="xlsx"):
+               output_format="xlsx", check_url=False):
         """ Export the selected fields of items while applying filters to an Excel file. """
         if "{stars}" in (line_format or "") and "rank" not in fields:
             fields.append("rank")
@@ -599,7 +627,7 @@ class ZoteroCLI(object):
             logger.debug("Creating Excel file...")
             wb = xlsxwriter.Workbook("export.xlsx")
             ws = wb.add_worksheet()
-            ws.add_table("A1:%s%d" % (c, r), {
+            ws.add_table(f"A1:{c}{r}", {
                 'autofilter': 1,
                 'columns': [{'header': h} for h in headers],
                 'data': data,
@@ -608,7 +636,7 @@ class ZoteroCLI(object):
             cc = wb.add_format()
             cc.set_align("center")
             for i, h in enumerate(headers):
-                ws.write("%s1" % string.ascii_uppercase[i], h, cc)
+                ws.write(f"{string.ascii_uppercase[i]}1", h, cc)
             # fix widths
             max_w = []
             wtxt = [False] * len(headers)
@@ -636,20 +664,22 @@ class ZoteroCLI(object):
                 for row in data:
                     r = row[i_rank]
                     mr = max(mr, float(r if r != "-" else 0))
-            lines = []
+            lines, url_check_executor, results = [], ThreadPoolExecutor(max_workers=10), []
             for row in data:
                 d = {k.lower(): v for k, v in zip(headers, row)}
+                if d['url'] not in ["", "-"]:
+                    results.append(url_check_executor.submit(_check_url, d['url']))
                 if "Title" in headers and "Url" in headers:
                     d['lower_title'] = t = _lower_title(d['title'])
-                    d['link'] = d['title'] if d['url'] in ["", "-"] else "[%s](%s)" % (d['title'], d['url'])
-                    d['link_lower'] = t if d['url'] in ["", "-"] else "[%s](%s)" % (t, d['url'])
+                    d['link'] = d['title'] if d['url'] in ["", "-"] else f"[{d['title']}]({d['url']})"
+                    d['link_lower'] = t if d['url'] in ["", "-"] else f"[{t}]({d['url']})"
                 if "link" in d.keys() and "link_with_abstract" in line_format:
                     if "AbstractNote" in headers:
                         d['link_with_abstract'] = d['link'] if d['abstractnote'] == "-" else \
-                                                  "%s\n\n%s\n\n" % (d['link'], _indent(d['abstractnote'], 2))
+                                                  f"{d['link']}\n\n{_indent(d['abstractnote'], 2)}\n\n"
                     elif "AbstractShortNote" in headers:
                         d['link_with_abstract'] = d['link'] if d['abstractshortnote'] == "." else \
-                                                  "%s - %s" % (d['link'], d['abstractshortnote'])
+                                                  f"{d['link']} - {d['abstractshortnote']}"
                 if "{emoji}" in line_format:
                     d['emoji'] = TYPE_EMOJIS.get(d['type'], TYPE_EMOJIS['default'])
                 if "{stars}" in line_format:
@@ -657,9 +687,19 @@ class ZoteroCLI(object):
                     s = " :star2:" if r == mr else " :star:"
                     d['stars'] = "" if r < .35 else s if .35 <= r < .65 else 2*s if .65 <= r < .85 else 3*s
                 lines.append(line_format.format(**d))
+            for r in as_completed(results):
+                try:
+                    url = r.result()
+                    if url is not None:
+                        logger.warning(f"Broken link: {url}")
+                except requests.exceptions.ConnectionError:
+                    logger.error(f"Broken link: {url} (connection aborted))")
+                except requests.exceptions.SSLError:
+                    logger.error(f"Broken link: {url} (SSL certificate check failure))")
+            url_check_executor.shutdown()
             r = Report(List(*lines))
         r.filename = "export"
-        logger.debug("Creating %s file..." % output_format.upper())
+        logger.debug(f"Creating {output_format.upper()} file...")
         getattr(r, output_format)(save_to_file=True)
     
     @ts.try_or_die(exc=ValueError, trace=False)
@@ -705,7 +745,7 @@ class ZoteroCLI(object):
                 data.setdefault(y, [])
                 data[y].append(i['data']['title'])
             for y, t in sorted(data.items(), key=lambda x: x[0]):
-                print(["%d:" % y, "####:"][y == 1900], ", ".join(t))
+                print([f"{y}:", "####:"][y == 1900], ", ".join(t))
         else:
             logger.debug(f"Got chart name '{name}' ; should be one of:\n- " + "\n- ".join(sorted(CHARTS)))
             logger.error("Bad chart")
@@ -736,7 +776,7 @@ class ZoteroCLI(object):
     @ts.try_or_die(exc=ValueError, trace=False)
     def view(self, name, value, fields=None):
         """ View a single item given a field and its value. """
-        headers, data = self._items(fields, ["%s:%s" % (name, value)])
+        headers, data = self._items(fields, [f"{name}:{value}"])
         for h, d in zip(headers, data[0]):
             hb = ts.txt2bold(h)
             if h == "Title":
@@ -756,11 +796,11 @@ class ZoteroCLI(object):
                     if isinstance(rel, str):
                         rel = [rel]
                     for k in rel:
-                        print("- %s" % ts.txt2italic(self.__objects[k.split("/")[-1]]['data']['title']))
+                        print(f"- {ts.txt2italic(self.__objects[k.split('/')[-1]]['data']['title'])}")
                 else:
                     print("{: <24}:\n".format(hb))
                     for i in d:
-                        print("- %s" % i)
+                        print(f"- {i}")
 
     @staticmethod
     def date(date_str, data=None):
@@ -769,9 +809,9 @@ class ZoteroCLI(object):
         dt = ts.dateparse(date_str)
         if dt:
             return dt
-        msg = "Bad datetime format: %s" % date_str
+        msg = f"Bad datetime format: {date_str}"
         if data:
-            msg += " for item titled '%s'" % ZoteroCLI.title(data)
+            msg += f" for item titled '{ZoteroCLI.title(data)}'"
         msg += ". Using default date 1900-01-01."
         logger.warning(msg)
         return datetime.strptime("1900-01-01", "%Y-%m-%d")
@@ -785,12 +825,12 @@ class ZoteroCLI(object):
     def sort(value, field=None):
         field = field or ""
         if field.startswith("date") or field.endswith("Date"):
-            return ZoteroCLI.date(value.lstrip("-"), "sort per %s" % field).timestamp()
+            return ZoteroCLI.date(value.lstrip("-"), f"sort per {field}").timestamp()
         elif field in FLOAT_FIELDS or field in INTEGER_FIELDS:
             try:
                 return float(-1 if value in ["", "-", None] else value)
             except:
-                logger.warning("Bad value '%s' for field %s" % (value, field))
+                logger.warning(f"Bad value '{value}' for field {field}")
                 return -1
         elif field == "title":
             s = str(value).lower()

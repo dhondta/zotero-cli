@@ -77,7 +77,7 @@ MODELS = [m.basename for m in MODEL_PATH.listdir() if m.basename != "default" an
 
 def _load_doc(path):
     """ Load the file from the given path with the relevant loader. """
-    global logger
+    logger = multiprocessing.get_logger()
     logger.debug(path)
     loader, kwargs = LOADERS[Path(path).extension], {}
     if isinstance(loader, tuple) and len(loader) == 2:
@@ -85,12 +85,11 @@ def _load_doc(path):
     try:
         return loader(path, **kwargs).load()
     except Exception as e:
-        logger.error("%s (%s)" % (path, str(e)))
+        logger.error(f"{path} ({e})")
 
 
-def _load_docs(zotero_files=SRC_PATH, ignore=None, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP,**kw):
+def _load_docs(zotero_files=SRC_PATH, ignore=None, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, **kw):
     """ Load text chunks from Zotero documents. """
-    global logger
     logger = kw.get('logger', logging.nullLogger)
     p, r = Path(zotero_files, expand=True).joinpath("storage"), []
     files = [f for f in map(str, p.walk(filter_func=lambda p: p.extension in LOADERS.keys())) if f not in ignore]
@@ -172,13 +171,13 @@ def install(model=MODEL_DEFAULT_NAME, download=False, logger=logging.nullLogger,
     """ Install and select the input model in ~/.zotero folder ; download it if required. """
     m, fn = Path(model, expand=True), Path(model).basename
     if fn not in MODEL_NAMES:
-        logger.warning("Model '%s' is not supported" % fn)
+        logger.warning(f"Model '{fn}' is not supported")
         sys.exit(0)
     if not MODEL_PATH.joinpath(fn).exists():
         if not m.exists():
             if download:
                 link, model = MODEL_LINK + fn, TempPath(fn)
-                logger.info("Downloading model '%s'" % fn)
+                logger.info(f"Downloading model '{fn}'")
                 resp = requests.get(link, stream=True)
                 l = resp.headers.get("content-length")
                 with model.open("wb") as f:
@@ -190,13 +189,13 @@ def install(model=MODEL_DEFAULT_NAME, download=False, logger=logging.nullLogger,
                                 model.write(data)
                                 pbar.update()
             else:
-                logger.error("Input model '%s' does not exist !" % model)
+                logger.error(f"Input model '{model}' does not exist !")
                 sys.exit(1)
-        logger.info("Installing model '%s'..." % m)
+        logger.info(f"Installing model '{m}'...")
         m.rename(MODEL_PATH.joinpath(fn))
         select(fn)
     else:
-        logger.warning("Model '%s' already exists in %s" % (fn, MODEL_PATH))
+        logger.warning(f"Model '{fn}' already exists in {MODEL_PATH}")
 
 
 def select(model=MODEL_DEFAULT_NAME, **kw):
