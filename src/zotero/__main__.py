@@ -21,6 +21,7 @@ sort references to help selecting the most relevant ones.
 """
 __examples__  = [
     "count -f \"collections:biblio\" -f \"rank:>1.0\"",
+    "export title date url itemType -f \"collections:doc\" -s \"title\" -l \"{emoji} {link_lower}\" -o md --check-url",
     "export year title itemType numAuthors numPages zscc references what results comments -f \"collections:biblio\" " \
         "-s date -l \">rank:50\"",
     "list attachments",
@@ -31,11 +32,23 @@ __examples__  = [
 ]
 
 
+def _domains(url_no_check):
+    r = []
+    for url in (url_no_check or []):
+        if ts.is_file(url):
+            with open(url) as f:
+                for l in f:
+                    r.append(l.strip())
+        else:
+            r.append(url.strip())
+    return r
+
+
 def _set_arg(subparser, arg, msg=None):
     """ Shortcut function to set arguments repeated for multiple subparsers. """
     if arg == "filter":
-        subparser.add_argument("-f", "--filter", action="extend", nargs="*", default=[], note="format: [field]:[regex]",
-                               help=msg or "filter to be applied on field's value")
+        subparser.add_argument("-f", "--filter", action="extend", dest="filters", nargs="*", default=[],
+                               note="format: [field]:[regex]", help=msg or "filter to be applied on field's value")
     elif arg == "limit":
         subparser.add_argument("-l", "--limit", help="limit the number of displayed records", note="format: either a "
                                "number or [field]:[number]\n    '<' and '>' respectively indicates ascending or "
@@ -76,11 +89,13 @@ def main():
     _set_arg(ccount, "filter", "filter to be applied while counting")
     _set_arg(ccount, "query")
     cexpt = sparsers.add_parser("export", help="export items to a file", category="manage")
-    cexpt.add_argument("field", nargs="+", help="field to be shown")
+    cexpt.add_argument("fields", nargs="+", help="field to be shown")
     cexpt.add_argument("-l", "--line-format", help="line's format string for outputting as a list")
     cexpt.add_argument("-o", "--output-format", default="xlsx", help="output format",
                        choices=["csv", "html", "json", "md", "pdf", "rst", "xml", "xlsx", "yaml"])
     cexpt.add_argument("-u", "--check-url", action="store_true", help="check for broken URL's")
+    cexpt.add_argument("--url-no-check", nargs="*", help="either a domain or a file with one domain per line for "
+                                                         "skipping URL check")
     _set_args(cexpt, "filter", "limit", "query", "sort")
     if __GPT:
         cingest = sparsers.add_parser("ingest", help="ingest Zotero documents", category="GPT")
@@ -105,17 +120,17 @@ def main():
         cselect = sparsers.add_parser("select", help="select a GPT model", category="GPT")
         cselect.add_argument("name", default=MODEL_DEFAULT_NAME, choices=MODELS, nargs="?", help="model name")
     cshow = sparsers.add_parser("show", help="show a list of items", category="read")
-    cshow.add_argument("field", nargs="*", help="field to be shown")
+    cshow.add_argument("fields", nargs="*", help="field to be shown")
     _set_args(cshow, "filter", "limit", "query", "sort")
     cview = sparsers.add_parser("view", help="view a single item", category="read")
     cview.add_argument("name", help="field name for selection")
     cview.add_argument("value", help="field value to be selected")
-    cview.add_argument("field", nargs="+", help="field to be shown")
+    cview.add_argument("fields", nargs="+", help="field to be shown")
     initialize()
     args.logger = logger
     if getattr(args, "query", None):
-        if hasattr(args, "field") and args.field == ["-"]:
-            args.field = QUERIES[args.query].get('fields', ["title"])
+        if hasattr(args, "fields") and args.fields == ["-"]:
+            args.fields = QUERIES[args.query].get('fields', ["title"])
         args.filter.extend(QUERIES[args.query].get('filter', []))
         if getattr(args, "limit", None) is None:
             args.limit = QUERIES[args.query].get('limit')
@@ -132,25 +147,10 @@ def main():
             if getattr(args, "reset_items", False) and k not in ["items"] + OBJECTS or k == "marks":
                 continue
             CACHE_PATH.joinpath(k + ".json").remove(False)
-    z = ZoteroCLI(args.id, ["user", "group"][args.group or GROUP_FILE.exists()], args.key, logger)
-    if args.command == "count":
-        z.count(args.filter)
-    elif args.command == "export":
-        z.export(args.field, args.filter, args.sort, args.desc, args.limit, args.line_format, args.output_format,
-                 args.check_url)
-    elif args.command == "install":
-        install()
-    elif args.command == "list":
-        z.list(args.field, args.filter, args.desc, args.limit)
-    elif args.command == "mark":
-        args.filter.append("numPages:>0")
-        z.mark(args.marker, args.filter, args.sort, args.desc, args.limit)
-    elif args.command == "plot":
-        z.plot(args.chart)
-    elif args.command == "show":
-        z.show(args.field, args.filter, args.sort, args.desc, args.limit)
-    elif args.command == "view":
-        z.view(args.name, args.value, args.field)
-    elif args.command != "reset":  # handle commands from gpt.py
-        globals()[args.command](**vars(args))
+    if args.command != "reset":
+        if args.command == "export":
+            args.url_no_check = l = _domains(args.url_no_check)
+            args.check_url |= len(l) > 0
+        getattr(ZoteroCLI(args.id, ["user", "group"][args.group or GROUP_FILE.exists()], args.key, logger),
+                args.command, globals().get(args.command))(**vars(args))
 

@@ -81,6 +81,15 @@ TYPE_EMOJIS = {
     'video recording':      ":movie_camera:",
     'webpage':              ":earth_americas:",
 }
+URL_CHECK_HEADERS = {
+    'Accept': "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    'Accept-Language': "en-US,en;q=0.9",
+    'Accept-Encoding': "gzip, deflate, br",
+    'Connection': "close",
+    'Range': "bytes=0-0",
+    'Upgrade-Insecure-Requests': "1",
+    'User-Agent': "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:138.0) Gecko/20100101 Firefox/138.0",
+}
 URL_NO_CHECK = (
     "arxiv.org",
     "dial.uclouvain.be",
@@ -90,6 +99,7 @@ URL_NO_CHECK = (
     "inria.hal.science",
     "iopscience.iop.org",
     "link.springer.com",
+    "onlinelibrary.wiley.com",
     "researchportal.rma.ac.be",
     "scholar.dsu.edu",
     "web.archive.org",
@@ -101,12 +111,24 @@ URL_NO_CHECK = (
     "www.sciencedirect.com",
     "www.scopus.com",
     "www.semanticscholar.org",
+    "www.softpedia.com",
     "www.usenix.org",
 )
 
 
-_check_url = lambda url, nocheck=URL_NO_CHECK: url if url.split("://")[-1].split("/")[0] not in nocheck and \
-                                                      requests.head(url).status_code >= 400 else None
+def _check_url(url, nocheck=URL_NO_CHECK):
+    try:
+        scheme, domain = url.split(":", 1)
+    except ValueError:
+        scheme, domain = "http", url
+    domain = domain.lstrip("/").split("/")[0].split("@")[-1].split(":")[0]
+    if scheme not in ["http", "https"] or ts.is_iterable(nocheck) and domain in nocheck:
+        return
+    response = requests.get(url, headers=URL_CHECK_HEADERS, allow_redirects=True, stream=True)
+    code = response.status_code
+    response.close()
+    if code >= 400:
+        return url
 
 
 def _lower_title(title):
@@ -610,14 +632,14 @@ class ZoteroCLI(object):
             json.dump(self.marks, f)
     
     @ts.try_or_die(exc=ValueError, trace=False)
-    def count(self, filters=None):
+    def count(self, filters=None, **kw):
         """ Count items while applying filters. """
         _, data = self._items(["title"], filters or [])
         print(len(data))
     
     @ts.try_or_die(exc=ValueError, trace=False)
     def export(self, fields=None, filters=None, sort=None, desc=False, limit=None, line_format=None,
-               output_format="xlsx", check_url=False):
+               output_format="xlsx", check_url=False, url_no_check=None, **kw):
         """ Export the selected fields of items while applying filters to an Excel file. """
         if "{stars}" in (line_format or "") and "rank" not in fields:
             fields.append("rank")
@@ -664,11 +686,13 @@ class ZoteroCLI(object):
                 for row in data:
                     r = row[i_rank]
                     mr = max(mr, float(r if r != "-" else 0))
-            lines, url_check_executor, results = [], ThreadPoolExecutor(max_workers=10), []
+            lines = []
+            if check_url:
+                url_check_executor, results = ThreadPoolExecutor(max_workers=10), {}
             for row in data:
                 d = {k.lower(): v for k, v in zip(headers, row)}
-                if d['url'] not in ["", "-"]:
-                    results.append(url_check_executor.submit(_check_url, d['url']))
+                if check_url and d['url'] not in ["", "-"]:
+                    results[url_check_executor.submit(_check_url, d['url'], url_no_check or URL_NO_CHECK)] = d['url']
                 if "Title" in headers and "Url" in headers:
                     d['lower_title'] = t = _lower_title(d['title'])
                     d['link'] = d['title'] if d['url'] in ["", "-"] else f"[{d['title']}]({d['url']})"
@@ -687,23 +711,25 @@ class ZoteroCLI(object):
                     s = " :star2:" if r == mr else " :star:"
                     d['stars'] = "" if r < .35 else s if .35 <= r < .65 else 2*s if .65 <= r < .85 else 3*s
                 lines.append(line_format.format(**d))
-            for r in as_completed(results):
-                try:
-                    url = r.result()
-                    if url is not None:
+            if check_url:
+                for r in as_completed(results):
+                    try:
+                        url = results[r]
+                        if r.result() is None:
+                            continue
                         logger.warning(f"Broken link: {url}")
-                except requests.exceptions.ConnectionError:
-                    logger.error(f"Broken link: {url} (connection aborted))")
-                except requests.exceptions.SSLError:
-                    logger.error(f"Broken link: {url} (SSL certificate check failure))")
-            url_check_executor.shutdown()
+                    except requests.exceptions.ConnectionError:
+                        continue
+                    except requests.exceptions.SSLError:
+                        logger.error(f"Broken link: {url} (SSL certificate check failure))")
+                url_check_executor.shutdown()
             r = Report(List(*lines))
         r.filename = "export"
         logger.debug(f"Creating {output_format.upper()} file...")
         getattr(r, output_format)(save_to_file=True)
     
     @ts.try_or_die(exc=ValueError, trace=False)
-    def list(self, field, filters=None, desc=False, limit=None):
+    def list(self, field, filters=None, desc=False, limit=None, **kw):
         """ List field's values while applying filters. """
         if field == "collections":
             l = [c['data']['name'] for c in self.collections]
@@ -731,12 +757,12 @@ class ZoteroCLI(object):
         print(ts.BorderlessTable([[ZoteroCLI.header(field)]] + data))
     
     @ts.try_or_die(exc=ValueError, trace=False)
-    def mark(self, marker, filters=None, sort=None, desc=False, limit=None):
+    def mark(self, marker, filters=None, sort=None, desc=False, limit=None, **kw):
         """ Mark the selected items as read/unread. """
         self._marks(marker, filters, sort, desc, limit)
     
     @ts.try_or_die(exc=ValueError, trace=False)
-    def plot(self, name, filters=None):
+    def plot(self, name, filters=None, **kw):
         """ Plot a chart given its slug. """
         if name == "software-in-time":
             data = {}
@@ -752,7 +778,7 @@ class ZoteroCLI(object):
             raise ValueError
     
     @ts.try_or_die(exc=ValueError, trace=False)
-    def show(self, fields=None, filters=None, sort=None, desc=False, limit=None):
+    def show(self, fields=None, filters=None, sort=None, desc=False, limit=None, **kw):
         """ Show the selected fields of items while applying filters. """
         # ensure the 'key' field is included for filtering the items ; then do not keep it if not selected
         output_key = "key" in fields
@@ -774,7 +800,7 @@ class ZoteroCLI(object):
             print(table)
     
     @ts.try_or_die(exc=ValueError, trace=False)
-    def view(self, name, value, fields=None):
+    def view(self, name, value, fields=None, **kw):
         """ View a single item given a field and its value. """
         headers, data = self._items(fields, [f"{name}:{value}"])
         for h, d in zip(headers, data[0]):
