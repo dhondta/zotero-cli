@@ -66,12 +66,13 @@ _set_args = lambda sp, *args: [_set_arg(sp, a) for a in args] and None
 def main():
     """ Tool's main function """
     # main parser
-    parser.add_argument("-g", "--group", action="store_true", help="API identifier is a group",
+    parser.add_argument("--creds-file", default=CREDS_FILE, type=ts.CredentialsPath, help="credentials file to load")
+    parser.add_argument("-g", "--group", action="store_true", help="set the API identifier as a group",
                         note="the default API identifier type is 'user' ; use this option if you modified your library "
-                             "to be shared with a group of users, this can be set permanently by touching %s" % 
-                             GROUP_FILE)
+                            f"to be shared with a group of users, this can be set permanently by touching {GROUP_FILE}")
     parser.add_argument("-i", "--id", help="API identifier",
-                        note="if 'id' and 'key' not specified, credentials are obtained from file %s" % CREDS_FILE)
+                        note="if 'id' and 'key' not specified, credentials are obtained from a file (by default: "
+                            f"{CREDS_FILE})")
     parser.add_argument("-k", "--key", help="API key",
                         note="if not specified while 'id' is, 'key' is asked as a password")
     parser.add_argument("-r", "--reset", action="store_true", help="remove cached collections and items")
@@ -88,7 +89,7 @@ def main():
     ccount = sparsers.add_parser("count", help="count items", category="read")
     _set_arg(ccount, "filter", "filter to be applied while counting")
     _set_arg(ccount, "query")
-    cexpt = sparsers.add_parser("export", help="export items to a file", category="manage")
+    cexpt = sparsers.add_parser("export", help="export items to a file", category="read")
     cexpt.add_argument("fields", nargs="+", help="field to be shown")
     cexpt.add_argument("-l", "--line-format", help="line's format string for outputting as a list")
     cexpt.add_argument("-o", "--output-format", default="xlsx", help="output format",
@@ -109,7 +110,7 @@ def main():
     clist.add_argument("--desc", action="store_true", help="sort results in descending order")
     cmark = sparsers.add_parser("mark", help="mark items with a marker", category="manage")
     cmark.add_argument("marker", choices=[x for p in MARKERS for x in p[:2]], help="marker to be set",
-                       note="possible values:\n - {}".format("\n - ".join("%s: %s" % (p[0], p[2]) for p in MARKERS)))
+                       note="possible values:\n - {}".format("\n - ".join(f"{p[0]}: {p[2]}" for p in MARKERS)))
     _set_args(cmark, "filter", "limit", "query", "sort")
     cplot = sparsers.add_parser("plot", help="plot various information using Matplotlib", category="read")
     cplot.add_argument("chart", choices=CHARTS, help="chart to be plotted")
@@ -122,6 +123,7 @@ def main():
     cshow = sparsers.add_parser("show", help="show a list of items", category="read")
     cshow.add_argument("fields", nargs="*", help="field to be shown")
     _set_args(cshow, "filter", "limit", "query", "sort")
+    sparsers.add_parser("update", help="reset the cache and redownload collections and items", category="manage")
     cview = sparsers.add_parser("view", help="view a single item", category="read")
     cview.add_argument("name", help="field name for selection")
     cview.add_argument("value", help="field value to be selected")
@@ -142,15 +144,15 @@ def main():
             args.desc = args.sort[0] == ">"
             if args.sort[0] in "<>":
                 args.sort = args.sort[1:]
-    if args.command == "reset" or args.reset:
-        for k in CACHE_FILES:
-            if getattr(args, "reset_items", False) and k not in ["items"] + OBJECTS or k == "marks":
-                continue
-            CACHE_PATH.joinpath(k + ".json").remove(False)
-    if args.command != "reset":
+    if args.command == "reset":
+        args.reset, args.stop = True, True
+        ZoteroCLI(**vars(args))
+    elif args.command == "update":
+        args.reset = True
+        ZoteroCLI(**vars(args))
+    else:
         if args.command == "export":
             args.url_no_check = l = _domains(args.url_no_check)
             args.check_url |= len(l) > 0
-        getattr(ZoteroCLI(args.id, ["user", "group"][args.group or GROUP_FILE.exists()], args.key, logger),
-                args.command, globals().get(args.command))(**vars(args))
+        getattr(ZoteroCLI(**vars(args)), args.command, globals().get(args.command))(**vars(args))
 

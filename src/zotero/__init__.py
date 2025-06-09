@@ -148,19 +148,36 @@ def _lower_title(title):
     return re.sub(r"^([A-Z][a-z]+(?:[-_][A-Z]?[a-z]+)*)", lambda p: g(p)[0] + g(p)[1:].lower(), title)
 
 
-class ZoteroCLI(object):
-    def __init__(self, api_id=None, api_id_type="user", api_key=None, main_logger=None):
-        global logger
-        logger = main_logger
+class ZoteroCLI:
+    def __init__(self, api_id=None, api_id_type="user", api_key=None, creds_file=None, group=False, logger=None,
+                 reset=False, stop=False, **kw):
+        self.logger = logger
+        api_id_type = ["user", "group"][group or GROUP_FILE.exists()]
+        # create the default credentials file the first time that the API identifier and secret are input
         if api_id is not None and api_key is not None:
-            CREDS_FILE.id = api_id
-            CREDS_FILE.secret = api_key
-            CREDS_FILE.save()
+            if not creds_file.exists():
+                creds_file.id = api_id
+                creds_file.secret = api_key
+                creds_file.save()
+            else:
+                logger.debug(f"Credentials file '{creds_file}' already exists")
+        if creds_file.id == "" and creds_file.secret == "":
+            creds_file.load()
+        if creds_file.id == "" and creds_file.secret == "":
+            creds_file.ask("API ID: ", "API key: ")
+            creds_file.save()
         self.__zot = None
+        cache_dir = self.__cdir = CACHE_PATH.joinpath(creds_file.id)
+        cache_dir.mkdir(exist_ok=True)
+        if reset:
+            self.reset()
+        if stop:
+            return
+        # load data into attributes of this instance
         for k in CACHE_FILES:
             if k == "marks":
                 continue
-            cached_file = CACHE_PATH.joinpath(k + ".json")
+            cached_file = cache_dir.joinpath(k + ".json")
             if cached_file.exists():
                 if k == "creds":
                     continue  # marks is not saved as self.marks but well self._marks_file ; process it separately
@@ -171,16 +188,15 @@ class ZoteroCLI(object):
                     except json.decoder.JSONDecodeError:
                         setattr(self, k, [])
             else:
-                # acquire credentials and setup a zotero.Zotero instance once
-                self._creds()
-                self.__zot = self.__zot or zotero.Zotero(CREDS_FILE.id, api_id_type, CREDS_FILE.secret)
+                # setup a zotero.Zotero instance once
+                self.__zot = self.__zot or zotero.Zotero(creds_file.id, api_id_type, creds_file.secret)
                 # now get the data from zotero.org
                 logger.debug(f"Getting {k} from zotero.org...")
                 if k == "collections":
                     try:
                         self.collections = list(self.__zot.collections())
                     except zotero_errors.ResourceNotFound:
-                        logger.error(f"Nothing found for ID {CREDS_FILE.id}")
+                        logger.error(f"Nothing found for ID {creds_file.id}")
                         logger.warning("Beware to use the --group option if this is the ID of a group")
                         return
                 elif k == "items":
@@ -202,7 +218,7 @@ class ZoteroCLI(object):
                     logger.debug(f"Saving {k} to cache '{cached_file}'...")
                     json.dump(getattr(self, k), f)
         # handle marks.json separately
-        self._marks_file = CACHE_PATH.joinpath("marks.json")
+        self._marks_file = cache_dir.joinpath("marks.json")
         # on the contrary of other JSON files (which are lists of dictionaries), marks.json is a dictionary
         if not self._marks_file.exists():
             self._marks_file.write_text("{}")
@@ -240,14 +256,6 @@ class ZoteroCLI(object):
                  INTEGER_FIELDS + NOTE_FIELDS:
             if f not in self._valid_fields:
                 self._valid_fields.append(f)
-    
-    def _creds(self):
-        """ Get API credentials from a local file or ask the user for it. """
-        if CREDS_FILE.id == "" and CREDS_FILE.secret == "":
-            CREDS_FILE.load()
-        if CREDS_FILE.id == "" and CREDS_FILE.secret == "":
-            CREDS_FILE.ask("API ID: ", "API key: ")
-            CREDS_FILE.save()
     
     def _expand_limit(self, limit, sort=None, desc=False, age=True):
         """ Expand the 'limit' parameter according to the following format: (([order])[field]:)[limit]
@@ -310,8 +318,8 @@ class ZoteroCLI(object):
             # filter format: (negate, lambda, lambda's second arg)
             elif field == "tags":
                 if regex not in self._valid_tags and regex not in ["-", "<empty>"]:
-                    logger.warning(f"Got tag '{regex}' ; should be one of:\n- " + \
-                                 "\n- ".join(sorted(self._valid_tags, key=ZoteroCLI.sort)))
+                    self.logger.warning(f"Got tag '{regex}' ; should be one of:\n- " + \
+                                         "\n- ".join(sorted(self._valid_tags, key=ZoteroCLI.sort)))
                     raise ValueError(f"Tag '{regex}' does not exist")
                 filt = (not_, lambda i, r: r in ["-", "<empty>"] and i['data']['tags'] in ["", []] or \
                                         r in (i['data']['tags'].split(";") if ts.is_str(i['data']['tags']) else \
@@ -328,8 +336,8 @@ class ZoteroCLI(object):
         afields = (fields or []) + list(_filters.keys())
         for f in afields:
             if f not in self._valid_fields and regex != "-":
-                logger.warning(f"Got field name '{f}' ; should be one of:\n- " + \
-                               "\n- ".join(sorted(self._valid_fields, key=ZoteroCLI.sort)))
+                self.logger.warning(f"Got field name '{f}' ; should be one of:\n- " + \
+                                     "\n- ".join(sorted(self._valid_fields, key=ZoteroCLI.sort)))
                 raise ValueError(f"Bad field name '{f}'")
         # now yield items, applying the filters and only selecting the given fields
         for i in self.items:
@@ -410,7 +418,7 @@ class ZoteroCLI(object):
                     s, e = m.groups()
                     d['numPages'] = abs(int(s) - int(e or 0)) or -1
                 else:
-                    logger.warning(f"Bad pages value '{p}'")
+                    self.logger.warning(f"Bad pages value '{p}'")
                     d['numPages'] = -1
             if any(x in NOTE_FIELDS for x in afields):
                 for f in NOTE_FIELDS:
@@ -502,17 +510,17 @@ class ZoteroCLI(object):
                     ffields.append(f)
         if lfield not in ffields:
             ffields.append(lfield)
-        logger.debug(f"Selected fields: {'|'.join(ffields)}")
+        self.logger.debug(f"Selected fields: {'|'.join(ffields)}")
         if len(filters):
-            logger.debug(f"Filtering entries ({filters})...")
+            self.logger.debug(f"Filtering entries ({filters})...")
         items = {i['key']: i for i in \
                  self._filter(ffields, [f for f in filters if not re.match(r"\~?rank\:", f)], force)}
         if len(items) == 0:
-            logger.info("No data")
+            self.logger.info("No data")
             return [], []
         # compute ranks similarly to the Page Rank algorithm, if relevant
         if "rank" in ffields:
-            logger.debug("Computing ranks...")
+            self.logger.debug("Computing ranks...")
             # principle: items with a valid date get a weight, others (with year==1900) do not
             self.ranks = {k: 1./len(items) if i['data']['year'] > 1900 else 0. for k, i in items.items()}
             # now we can iterate
@@ -541,7 +549,7 @@ class ZoteroCLI(object):
                                     self.ranks[k1] += self.ranks.get(k2, 0.) / r
                 # check for convergence
                 if tuple(self.ranks.values()) == prev:
-                    logger.debug(f"Ranking algorithm converged after {n} iterations")
+                    self.logger.debug(f"Ranking algorithm converged after {n} iterations")
                     break
                 prev = tuple(self.ranks.values())
             # apply the damping factor at the very end
@@ -561,13 +569,13 @@ class ZoteroCLI(object):
             self.ranks = {k: v / max_rank if max_rank else 0. for k, v in self.ranks.items()}
             for k, r in sorted(self.ranks.items(), key=lambda x: -x[1]):
                 k_d = items[k]['data']
-                logger.debug(f"{r:.05f} - {k_d['title']} ({k_d['date']})")
+                self.logger.debug(f"{r:.05f} - {k_d['title']} ({k_d['date']})")
             # reapply filters, including for fields that were just computed
             items = {i['key']: i for i in self._filter(ffields, filters, force)}
             for k, i in items.items():
                 i['data']['rank'] = self.ranks.get(k)
             if len(items) == 0:
-                logger.info("No data")
+                self.logger.info("No data")
                 return
         # exclude irrelevant items from the list of items
         if not force:
@@ -582,15 +590,15 @@ class ZoteroCLI(object):
                 select_items = list(items.values())
             if lfdesc:
                 select_items = select_items[::-1]
-            logger.debug(f"Limiting to {limit} items (sorted based on {lfield or sort} in "
-                         f"{['ascending', 'descending'][lfdesc]} order)...")
+            self.logger.debug(f"Limiting to {limit} items (sorted based on {lfield or sort} in "
+                              f"{['ascending', 'descending'][lfdesc]} order)...")
             items = {i['key']: i for i in select_items[:limit]}
         # ensure that the rank field is set for every item
         if "rank" in ffields:
             for i in items.values():
                 i['data']['rank'] = self.ranks.get(i['key'], .0)
         # format the selected items as table data
-        logger.debug(f"Sorting items based on {sort}...")
+        self.logger.debug(f"Sorting items based on {sort}...")
         for i in sorted(items.values(), key=lambda i: ZoteroCLI.sort(i['data'].get(sort, "-"), sort)):
             row = [self._format_value(i['data'].get(f), f) if i['data'].get(f) else "-" for f in fields]
             if len(row) > 1 and all(x in ".-" for x in row[1:]):  # row[0] is the item's key ; shall never be "." or "-"
@@ -620,15 +628,15 @@ class ZoteroCLI(object):
             if negate:
                 try:
                     self.marks[marker].remove(k)
-                    logger.debug(f"Unmarked {k} from {marker}")
+                    self.logger.debug(f"Unmarked {k} from {marker}")
                 except ValueError:
                     pass
             elif k not in self.marks[marker]:
-                logger.debug(f"Marked {k} as {marker}")
+                self.logger.debug(f"Marked {k} as {marker}")
                 self.marks[marker].append(k)
         self.marks = {k: l for k, l in self.marks.items() if len(l) > 0}
         with self._marks_file.open('w') as f:
-            logger.debug(f"Saving marks to cache '{self._marks_file}'...")
+            self.logger.debug(f"Saving marks to cache '{self._marks_file}'...")
             json.dump(self.marks, f)
     
     @ts.try_or_die(exc=ValueError, trace=False)
@@ -646,7 +654,7 @@ class ZoteroCLI(object):
         headers, data = self._items(fields, filters, sort, desc, limit)
         if output_format == "xlsx":
             c, r = string.ascii_uppercase[len(headers)-1], len(data) + 1
-            logger.debug("Creating Excel file...")
+            self.logger.debug("Creating Excel file...")
             wb = xlsxwriter.Workbook("export.xlsx")
             ws = wb.add_worksheet()
             ws.add_table(f"A1:{c}{r}", {
@@ -717,15 +725,15 @@ class ZoteroCLI(object):
                         url = results[r]
                         if r.result() is None:
                             continue
-                        logger.warning(f"Broken link: {url}")
+                        self.logger.warning(f"Broken link: {url}")
                     except requests.exceptions.ConnectionError:
                         continue
                     except requests.exceptions.SSLError:
-                        logger.error(f"Broken link: {url} (SSL certificate check failure))")
+                        self.logger.error(f"Broken link: {url} (SSL certificate check failure))")
                 url_check_executor.shutdown()
             r = Report(List(*lines))
         r.filename = "export"
-        logger.debug(f"Creating {output_format.upper()} file...")
+        self.logger.debug(f"Creating {output_format.upper()} file...")
         getattr(r, output_format)(save_to_file=True)
     
     @ts.try_or_die(exc=ValueError, trace=False)
@@ -733,10 +741,10 @@ class ZoteroCLI(object):
         """ List field's values while applying filters. """
         if field == "collections":
             l = [c['data']['name'] for c in self.collections]
-            logger.warning("Filters are not applicable to field: collections")
+            self.logger.warning("Filters are not applicable to field: collections")
         elif field == "fields":
             l = self._valid_fields
-            logger.warning("Filters are not applicable to field: fields")
+            self.logger.warning("Filters are not applicable to field: fields")
         else:
             l = [row[0] for row in self._items([field], filters)[1]]
         if len(l) == 0:
@@ -773,8 +781,8 @@ class ZoteroCLI(object):
             for y, t in sorted(data.items(), key=lambda x: x[0]):
                 print([f"{y}:", "####:"][y == 1900], ", ".join(t))
         else:
-            logger.debug(f"Got chart name '{name}' ; should be one of:\n- " + "\n- ".join(sorted(CHARTS)))
-            logger.error("Bad chart")
+            self.logger.debug(f"Got chart name '{name}' ; should be one of:\n- " + "\n- ".join(sorted(CHARTS)))
+            self.logger.error("Bad chart")
             raise ValueError
     
     @ts.try_or_die(exc=ValueError, trace=False)
@@ -798,6 +806,12 @@ class ZoteroCLI(object):
                     for i, v in enumerate(row):
                         row[i] = "\n".join(ts.txt2bold(l) if len(l) > 0 else "" for l in v.split("\n"))
             print(table)
+    
+    def reset(self, reset_items=False, **kw):
+        for k in CACHE_FILES:
+            if reset_items and k not in ["items"] + OBJECTS or k == "marks":
+                continue
+            self.__cdir.joinpath(k + ".json").remove(False)
     
     @ts.try_or_die(exc=ValueError, trace=False)
     def view(self, name, value, fields=None, **kw):
@@ -839,7 +853,7 @@ class ZoteroCLI(object):
         if data:
             msg += f" for item titled '{ZoteroCLI.title(data)}'"
         msg += ". Using default date 1900-01-01."
-        logger.warning(msg)
+        self.logger.warning(msg)
         return datetime.strptime("1900-01-01", "%Y-%m-%d")
     
     @staticmethod
@@ -856,7 +870,7 @@ class ZoteroCLI(object):
             try:
                 return float(-1 if value in ["", "-", None] else value)
             except:
-                logger.warning(f"Bad value '{value}' for field {field}")
+                self.logger.warning(f"Bad value '{value}' for field {field}")
                 return -1
         elif field == "title":
             s = str(value).lower()

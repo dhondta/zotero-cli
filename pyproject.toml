@@ -31,7 +31,7 @@ dependencies = [
   "fonttools>=4.43.0",  # SNYK-PYTHON-FONTTOOLS-6133203
   "matplotlib",
   "pyzotero",
-  "tinyscript>=1.30.16",
+  "tinyscript>=1.30.22",
   "xlsxwriter",
 ]
 dynamic = ["version"]
