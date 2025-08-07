@@ -128,7 +128,7 @@ def main():
     cview.add_argument("name", help="field name for selection")
     cview.add_argument("value", help="field value to be selected")
     cview.add_argument("fields", nargs="+", help="field to be shown")
-    initialize()
+    initialize(noargs_action="usage")
     args.logger = logger
     if getattr(args, "query", None):
         if hasattr(args, "fields") and args.fields == ["-"]:
