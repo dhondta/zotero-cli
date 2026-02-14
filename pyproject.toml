@@ -20,7 +20,7 @@ description = "Tinyscript tool for sorting and exporting Zotero references based
 license = "GPL-3.0-or-later"
 license-files = ["LICEN[CS]E*"]
 keywords = ["zotero", "citations", "cli-app", "tinyscript"]
-requires-python = ">=3.8,<4"
+requires-python = ">=3.9,<4"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
