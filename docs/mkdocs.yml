@@ -1,12 +1,16 @@
 site_author: dhondta
-site_name: "ZoteroCLI - Tool for manipulating Zotero references"
-copyright: Copyright &copy; 2020-2023 Alexandre D'Hondt
+site_name: Zotero CLI
+site_description: Tinyscript tool for sorting, ranking and exporting Zotero references based on pyzotero
+site_url: https://zotero-cli.readthedocs.io
 repo_url: https://github.com/dhondta/zotero-cli
+edit_uri: edit/main/docs/pages/
+copyright: Copyright &copy; 2020 Alexandre D'Hondt
 docs_dir: pages
 nav:
-  - Introduction: index.md
-  - Using Zotero-CLI: usage.md
+  - Home: index.md
+  - Usage: usage.md
   - FAQ: faq.md
+  - Contributing: contributing.md
 extra:
   generator: false
   social:
@@ -22,24 +26,33 @@ extra:
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/alex_dhondt
       name: Alex on Twitter
-extra_css:
-  - css/extra.css
 theme:
   name: material
+  logo: img/logo.png
+  favicon: img/icon.png
   palette:
     - scheme: default
       toggle:
-        icon: material/brightness-7 
+        icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
-  logo: imgs/logo.png
-  favicon: imgs/icon.png
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+    - toc.follow
 use_directory_urls: false
 markdown_extensions:
   - admonition
-  - codehilite
+  - attr_list
+  - def_list
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - tables
   - toc:
       permalink: true

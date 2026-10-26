@@ -2,7 +2,7 @@
 
 ## How to enter new credentials ?
 
-Reference: [*Credentials & data cache*](usage.html#credentials-data-cache).
+Reference: [*Credentials & data cache*](usage.md#credentials-data-cache).
 
 ```sh
 $ zotero-cli --id <my-id> --key <my-key> [...]
@@ -18,7 +18,7 @@ $ zotero-cli -i <my-id> -k <my-key> reset
 
 ## How to reset the cache ?
 
-Reference: [*Credentials & data cache*](usage.html#credentials-data-cache).
+Reference: [*Credentials & data cache*](usage.md#credentials-data-cache).
 
 ```sh
 $ zotero-cli reset
@@ -41,7 +41,7 @@ $ zotero-cli -r show [...]
 
 ## How to list values ?
 
-Reference: [*List field values*](usage.html#list-field-values).
+Reference: [*List field values*](usage.md#list-field-values).
 
 ```sh
 $ zotero-cli list title
@@ -52,7 +52,7 @@ $ zotero-cli list attachments
 
 ## How to show items with filters ?
 
-Reference: [*Filter, sort and limit*](usage.html#filter-sort-limit).
+Reference: [*Filter, sort and limit*](usage.md#filter-sort-and-limit).
 
 ```sh
 $ zotero-cli show title -f "collections:bibliography"
@@ -66,7 +66,7 @@ $ zotero-cli show year title numPages -f "collections:biblio" -f "date:2020" -f 
 
 ## How to sort items ?
 
-Reference: [*Filter, sort and limit*](usage.html#filter-sort-limit).
+Reference: [*Filter, sort and limit*](usage.md#filter-sort-and-limit).
 
 ```sh
 $ zotero-cli show title -f "collections:biblio" -s date
@@ -76,7 +76,7 @@ $ zotero-cli show year title -f "collections:biblio" -s ">date"
 
 ## How to limit the number of items ?
 
-Reference: [*Filter, sort and limit*](usage.html#filter-sort-limit).
+Reference: [*Filter, sort and limit*](usage.md#filter-sort-and-limit).
 
 ```sh
 $ zotero-cli show year title -f "collections:biblio" -l "date:10"
@@ -91,7 +91,7 @@ $ zotero-cli show year title -f "collections:biblio" -s date -l ">numPages:10"
 
 ## How to filter all items for a given author ?
 
-References: [*Filter, sort and limit*](usage.html#filter-sort-limit), [*Count/Show/Export items*](usage.html#count-show-export-items).
+References: [*Filter, sort and limit*](usage.md#filter-sort-and-limit), [*Count/Show/Export items*](usage.md#countshowexport-items).
 
 ```sh
 $ zotero-cli show year title -f "collections:biblio" -f "authors:smith"
@@ -100,7 +100,7 @@ $ zotero-cli show year title -f "collections:biblio" -f "authors:smith" -f "auth
 
 ## How to show titles for which the date is not filled in ?
 
-References: [*Filter, sort and limit*](usage.html#filter-sort-limit), [*Count/Show/Export items*](usage.html#count-show-export-items).
+References: [*Filter, sort and limit*](usage.md#filter-sort-and-limit), [*Count/Show/Export items*](usage.md#countshowexport-items).
 
 ```sh
 $ zotero-cli show title -f "date:<empty>"
@@ -109,7 +109,7 @@ $ zotero-cli show title -f "collections:biblio" -f "date:-"
 
 ## How to mark items as read/unread ?
 
-Reference: [*Mark items as read/unread*](usage.html#mark-items-as-read-unread)
+Reference: [*Mark items*](usage.md#mark-items)
 
 ```sh
 $ zotero-cli mark --filter "key:QZR5QAIW"
