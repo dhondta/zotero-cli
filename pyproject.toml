@@ -17,21 +17,20 @@ authors = [
   {name="Alexandre D'Hondt", email="alexandre.dhondt@gmail.com"},
 ]
 description = "Tinyscript tool for sorting and exporting Zotero references based on pyzotero"
-license = "GPL-3.0-or-later"
-license-files = ["LICEN[CS]E*"]
+license = {file = "LICENSE"}
 keywords = ["zotero", "citations", "cli-app", "tinyscript"]
 requires-python = ">=3.10,<4"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Programming Language :: Python :: 3",
 ]
 dependencies = [
-  "fonttools>=4.43.0",  # SNYK-PYTHON-FONTTOOLS-6133203
   "matplotlib",
   "pyzotero",
-  "tinyscript>=1.30.22",
+  "tinyscript>=1.31.3",
   "xlsxwriter",
 ]
 dynamic = ["version"]
@@ -45,7 +44,6 @@ gpt = [
   "langchain>=0.0.225",
   "llama-cpp-python",
   "numpy>=1.22.2",     # SNYK-PYTHON-NUMPY-2321964
-  "requests>=2.32.2",  # SNYK-PYTHON-REQUESTS-6928867
   "sympy>=1.12",       # SNYK-PYTHON-SYMPY-6084333
   "tqdm",
 ]
