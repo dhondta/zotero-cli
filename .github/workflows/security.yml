@@ -28,4 +28,5 @@ jobs:
       run: python -m pip install --upgrade pip pip-audit
     - name: Audit dependencies
       # audit the project (resolved in an isolated environment), not the runner's own packages
-      run: pip-audit .
+      # PYSEC-2026-501: pyminizip (via tinyscript) has no fixed version yet ; remove once it is fixed or dropped
+      run: pip-audit . --ignore-vuln PYSEC-2026-501

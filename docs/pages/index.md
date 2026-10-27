@@ -31,7 +31,7 @@ $ zotero-cli list itemType
 ## System Requirements
 
 - **Platform**: Linux
-- **Python**: 3.9 or later
+- **Python**: 3.10 or later
 
 ## Installation
 

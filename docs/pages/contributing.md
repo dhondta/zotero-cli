@@ -25,7 +25,7 @@ $ pip install flake8
 $ flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 ```
 
-CI (`.github/workflows/publish-package.yml`) installs the package on Python 3.9 to 3.13 and runs this flake8 check.
+CI (`.github/workflows/publish-package.yml`) installs the package on Python 3.10 to 3.13 and runs this flake8 check.
 
 ## Releasing
 
